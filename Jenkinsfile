@@ -41,15 +41,11 @@ stage('Filter Triggers') {
             echo "Action: ${env.pr_action}"
             echo "PR Number: ${env.pr_number ?: env.issue_number}"
             echo "Comment: ${env.comment_body}"
+            echo "Comment Author: ${env.comment_author}"  // NOWE
             echo "========================================"
             
-            // DEBUG: Sprawdź dokładną zawartość
-            echo "DEBUG: Comment length = ${env.comment_body?.length()}"
-            echo "DEBUG: Contains 'Jenkins'? = ${env.comment_body?.contains('Jenkins')}"
-            echo "DEBUG: Contains 'Pipeline Report'? = ${env.comment_body?.contains('Pipeline Report')}"
-            
-            // Ignoruj komentarze od Jenkinsa
-            if (env.comment_body?.contains('Jenkins CI/CD Pipeline Report')) {
+            // Ignoruj komentarze od Jenkinsa (bot)
+            if (env.comment_author == 'MatyniaPiotr' && env.comment_body?.contains('Jenkins CI/CD Pipeline Report')) {
                 echo "⚠️ Skipping - this is a Jenkins bot comment"
                 currentBuild.result = 'ABORTED'
                 error('Jenkins bot comment detected - aborting to prevent infinite loop')
@@ -253,12 +249,18 @@ stage('Filter Triggers') {
         }
         
         // ===== STAGE 5: Validate lub Deploy =====
-       stage('Validate or Deploy') {
+stage('Validate or Deploy') {
     steps {
         script {
-            echo "Checking comment: ${params.comment_body}"
+            // DEBUG - sprawdź obie zmienne
+            echo "DEBUG: params.comment_body = ${params.comment_body}"
+            echo "DEBUG: env.comment_body = ${env.comment_body}"
             
-            if (params.comment_body?.toLowerCase()?.contains('validate')) {
+            // Użyj tej która działa
+            def commentText = env.comment_body ?: params.comment_body
+            echo "Checking comment: ${commentText}"
+            
+            if (commentText?.toLowerCase()?.contains('validate')) {
                 echo "Running VALIDATION"
                 env.IS_VALIDATED = 'true'
                 
@@ -272,7 +274,7 @@ stage('Filter Triggers') {
                 
                 env.OUTPUT_MESSAGE += "✅ **Validation completed**\n"
                 
-            } else if (params.comment_body?.toLowerCase()?.contains('deploy')) {
+            } else if (commentText?.toLowerCase()?.contains('deploy')) {
                 echo "Running DEPLOYMENT"
                 env.IS_DEPLOYED = 'true'
                 
