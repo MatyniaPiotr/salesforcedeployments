@@ -149,7 +149,7 @@ pipeline {
                     try {
 
                         withCredentials([
-                            file(credentialsId: 'salesforce-server-key', variable: 'SF_SERVER_KEY'),
+                            file(credentialsId: 'salesforce-jwt-key', variable: 'SF_SERVER_KEY'),
                             string(credentialsId: 'salesforce-client-id', variable: 'SF_CLIENT_ID'),
                             string(credentialsId: 'salesforce-username', variable: 'SF_USERNAME')
                         ]) {
