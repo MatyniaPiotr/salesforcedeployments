@@ -41,10 +41,10 @@ stage('Filter Triggers') {
             echo "Action: ${env.pr_action}"
             echo "PR Number: ${env.pr_number ?: env.issue_number}"
             echo "Comment: ${env.comment_body}"
-            echo "Comment Author: ${env.comment_author}"  // NOWE
+            echo "Comment Author: ${env.comment_author}"
             echo "========================================"
             
-            // Ignoruj komentarze od Jenkinsa (bot)
+            // ⭐ NOWE: Ignoruj komentarze z raportami Jenkinsa
             if (env.comment_body?.contains('Jenkins CI/CD Pipeline Report')) {
                 echo "⚠️ Skipping - this is a Jenkins bot comment"
                 currentBuild.result = 'ABORTED'
@@ -267,7 +267,6 @@ stage('Validate or Deploy') {
                     sf project deploy validate ^
                         --source-dir force-app ^
                         --target-org SIT ^
-                        --test-level NoTestRun ^
                         --ignore-warnings ^
                         --json > deployment-result.json
                 """, returnStatus: true)
@@ -289,8 +288,7 @@ stage('Validate or Deploy') {
                     sf project deploy start ^
                         --source-dir force-app ^
                         --target-org SIT ^
-                        --test-level NoTestRun ^
-                        --ignore-warnings ^
+                        --test-level RunLocalTests ^
                         --json > deployment-result.json
                 """, returnStatus: true)
                 
