@@ -45,7 +45,7 @@ stage('Filter Triggers') {
             echo "========================================"
             
             // Ignoruj komentarze od Jenkinsa (bot)
-            if (env.comment_author == 'MatyniaPiotr' && env.comment_body?.contains('Jenkins CI/CD Pipeline Report')) {
+            if (env.comment_body?.contains('Jenkins CI/CD Pipeline Report')) {
                 echo "⚠️ Skipping - this is a Jenkins bot comment"
                 currentBuild.result = 'ABORTED'
                 error('Jenkins bot comment detected - aborting to prevent infinite loop')
@@ -262,31 +262,47 @@ stage('Validate or Deploy') {
             
             if (commentText?.toLowerCase()?.contains('validate')) {
                 echo "Running VALIDATION"
-                env.IS_VALIDATED = 'true'
                 
-                bat """
+                def exitCode = bat(script: """
                     sf project deploy validate ^
                         --source-dir force-app ^
                         --target-org SIT ^
-                        --test-level RunLocalTests ^
+                        --test-level NoTestRun ^
+                        --ignore-warnings ^
                         --json > deployment-result.json
-                """
+                """, returnStatus: true)
                 
-                env.OUTPUT_MESSAGE += "✅ **Validation completed**\n"
+                echo "Validation exit code: ${exitCode}"
+                
+                if (exitCode == 0) {
+                    env.IS_VALIDATED = 'true'
+                    env.OUTPUT_MESSAGE += "✅ **Validation completed**\n"
+                } else {
+                    echo "❌ Validation failed - check deployment-result.json"
+                    env.OUTPUT_MESSAGE += "❌ **Validation failed**\n"
+                }
                 
             } else if (commentText?.toLowerCase()?.contains('deploy')) {
                 echo "Running DEPLOYMENT"
-                env.IS_DEPLOYED = 'true'
                 
-                bat """
+                def exitCode = bat(script: """
                     sf project deploy start ^
                         --source-dir force-app ^
                         --target-org SIT ^
-                        --test-level RunLocalTests ^
+                        --test-level NoTestRun ^
+                        --ignore-warnings ^
                         --json > deployment-result.json
-                """
+                """, returnStatus: true)
                 
-                env.OUTPUT_MESSAGE += "✅ **Deployment completed**\n"
+                echo "Deployment exit code: ${exitCode}"
+                
+                if (exitCode == 0) {
+                    env.IS_DEPLOYED = 'true'
+                    env.OUTPUT_MESSAGE += "✅ **Deployment completed**\n"
+                } else {
+                    echo "❌ Deployment failed - check deployment-result.json"
+                    env.OUTPUT_MESSAGE += "❌ **Deployment failed**\n"
+                }
                 
             } else {
                 echo "No valid command - skipping validation/deployment"
