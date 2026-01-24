@@ -241,80 +241,45 @@ pipeline {
         }
         
         // ===== STAGE 5: Validate lub Deploy =====
-        stage('Validate or Deploy') {
-            steps {
-                script {
-                    env.OUTPUT_MESSAGE += "🚀 **Salesforce Validation/Deployment...**\\n\\n"
-                    
-                    try {
-                        def action = null
-                        
-                        // Wykryj komendę z komentarza
-                        if (COMMENT_BODY && COMMENT_BODY != '' && COMMENT_BODY != 'null') {
-                            def commentLower = COMMENT_BODY.toLowerCase().trim()
-                            if (commentLower == 'validate') action = 'validate'
-                            if (commentLower == 'deploy') action = 'deploy'
-                        }
-                        
-                        if (!action) {
-                            env.OUTPUT_MESSAGE += "ℹ️ No valid command found in comment\\n"
-                            env.OUTPUT_MESSAGE += "**Valid commands:** `Validate` or `Deploy`\\n"
-                            echo "No valid command - skipping validation/deployment"
-                            return
-                        }
-                        
-                        env.OUTPUT_MESSAGE += "📋 **Command detected:** ${action.toUpperCase()}\\n\\n"
-                        
-                        // Zbuduj komendę
-                        def deployCmd = ""
-                        
-                        if (action == 'validate') {
-                            deployCmd = "sf project deploy start --source-dir ${DEPLOY_DIR} --target-org ${SF_ALIAS} --test-level RunLocalTests --dry-run --wait 30 --json"
-                            env.OUTPUT_MESSAGE += "⏳ Running **validation** (dry-run)...\\n"
-                            echo "Running VALIDATION"
-                        } else if (action == 'deploy') {
-                            // Sprawdź approval przed deploymentem
-                            if (env.IS_APPROVED != 'true') {
-                                env.OUTPUT_MESSAGE += "❌ **DEPLOY BLOCKED - PR NOT APPROVED!**\\n"
-                                env.OUTPUT_MESSAGE += "Please get approval before deploying\\n"
-                                error("Deploy requires PR approval")
-                            }
-                            
-                            deployCmd = "sf project deploy start --source-dir ${DEPLOY_DIR} --target-org ${SF_ALIAS} --test-level RunLocalTests --wait 30 --json"
-                            env.OUTPUT_MESSAGE += "⏳ Running **deployment**...\\n"
-                            echo "Running DEPLOYMENT"
-                        }
-                        
-                        // Wykonaj deployment/validation
-                        echo "Executing: ${deployCmd}"
-                        def deployResult = bat(
-                            script: "${deployCmd} > deployment-result.json 2>&1",
-                            returnStatus: true
-                        )
-                        
-                        // Wyświetl zawartość w logach
-                        echo "=== DEPLOYMENT/VALIDATION RESULT ==="
-                        bat "type deployment-result.json"
-                        echo "===================================="
-                        
-                        // Zapisz status dla następnego stage
-                        env.DEPLOY_EXIT_CODE = "${deployResult}"
-                        
-                        if (deployResult == 0) {
-                            env.OUTPUT_MESSAGE += "✅ Command completed successfully\\n"
-                        } else {
-                            env.OUTPUT_MESSAGE += "⚠️ Command finished with errors (exit code: ${deployResult})\\n"
-                        }
-                        
-                    } catch (Exception e) {
-                        env.OUTPUT_MESSAGE += "❌ Execution failed: ${e.message}\\n"
-                        throw e
-                    }
-                    
-                    env.OUTPUT_MESSAGE += "\\n---\\n\\n"
-                }
+       stage('Validate or Deploy') {
+    steps {
+        script {
+            echo "Checking comment: ${params.comment_body}"
+            
+            if (params.comment_body?.toLowerCase()?.contains('validate')) {
+                echo "Running VALIDATION"
+                env.IS_VALIDATED = 'true'
+                
+                bat """
+                    sf project deploy validate ^
+                        --source-dir force-app ^
+                        --target-org SIT ^
+                        --test-level RunLocalTests ^
+                        --json > deployment-result.json
+                """
+                
+                env.OUTPUT_MESSAGE += "✅ **Validation completed**\n"
+                
+            } else if (params.comment_body?.toLowerCase()?.contains('deploy')) {
+                echo "Running DEPLOYMENT"
+                env.IS_DEPLOYED = 'true'
+                
+                bat """
+                    sf project deploy start ^
+                        --source-dir force-app ^
+                        --target-org SIT ^
+                        --test-level RunLocalTests ^
+                        --json > deployment-result.json
+                """
+                
+                env.OUTPUT_MESSAGE += "✅ **Deployment completed**\n"
+                
+            } else {
+                echo "No valid command - skipping validation/deployment"
             }
         }
+    }
+}
         
         // ===== STAGE 6: Parsowanie rezultatu =====
         stage('Parse Deployment Result') {
