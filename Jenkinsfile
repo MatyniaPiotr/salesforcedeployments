@@ -43,7 +43,12 @@ stage('Filter Triggers') {
             echo "Comment: ${env.comment_body}"
             echo "========================================"
             
-            // ⭐ NOWE: Ignoruj komentarze od Jenkinsa
+            // DEBUG: Sprawdź dokładną zawartość
+            echo "DEBUG: Comment length = ${env.comment_body?.length()}"
+            echo "DEBUG: Contains 'Jenkins'? = ${env.comment_body?.contains('Jenkins')}"
+            echo "DEBUG: Contains 'Pipeline Report'? = ${env.comment_body?.contains('Pipeline Report')}"
+            
+            // Ignoruj komentarze od Jenkinsa
             if (env.comment_body?.contains('Jenkins CI/CD Pipeline Report')) {
                 echo "⚠️ Skipping - this is a Jenkins bot comment"
                 currentBuild.result = 'ABORTED'
