@@ -283,71 +283,42 @@ pipeline {
         
         // ===== STAGE 6: Parsowanie rezultatu =====
         stage('Parse Deployment Result') {
-            steps {
-                script {
-                    env.OUTPUT_MESSAGE += "📊 **Analyzing result...**\\n\\n"
+    steps {
+        script {
+            if (fileExists('deployment-result.json')) {
+                def deployResult = readJSON file: 'deployment-result.json'
+                
+                echo "Deployment result status: ${deployResult.status}"
+                
+                if (deployResult.status == 0) {
+                    def result = deployResult.result
                     
-                    try {
-                        if (!fileExists('deployment-result.json')) {
-                            env.OUTPUT_MESSAGE += "ℹ️ No deployment/validation was executed\\n"
-                            env.OUTPUT_MESSAGE += "\\n---\\n\\n"
-                            return
-                        }
-                        
-                        def resultContent = readFile('deployment-result.json').trim()
-                        
-                        // Parsuj JSON
-                        def resultJson
-                        try {
-                            resultJson = readJSON text: resultContent
-                        } catch (Exception jsonError) {
-                            env.OUTPUT_MESSAGE += "⚠️ Could not parse JSON result\\n"
-                            env.OUTPUT_MESSAGE += "```\\n${resultContent}\\n```\\n"
-                            return
-                        }
-                        
-                        def status = resultJson.result?.status ?: resultJson.status
-                        def deployId = resultJson.result?.id ?: 'N/A'
-                        
-                        env.OUTPUT_MESSAGE += "**Status:** ${status}\\n"
-                        env.OUTPUT_MESSAGE += "**Deploy ID:** ${deployId}\\n\\n"
-                        
-                        // Analiza statusu
-                        if (status == 'Succeeded') {
-                            env.IS_DEPLOYED = 'true'
-                            env.IS_VALIDATED = 'true'
-                            env.OUTPUT_MESSAGE += "✅ **SUCCESS!**\\n"
-                            
-                            // Dodatkowe info o sukcesie
-                            if (resultJson.result?.deployedSource) {
-                                def deployed = resultJson.result.deployedSource.size()
-                                env.OUTPUT_MESSAGE += "📦 Deployed ${deployed} component(s)\\n"
-                            }
-                            
-                        } else if (status == 'Failed') {
-                            env.IS_DEPLOYED = 'false'
-                            env.IS_VALIDATED = 'false'
-                            env.OUTPUT_MESSAGE += "❌ **FAILED**\\n\\n"
-                            
-                            // Szczegóły błędów
-                            if (resultJson.result?.details?.componentFailures) {
-                                env.OUTPUT_MESSAGE += "**Errors:**\\n"
-                                resultJson.result.details.componentFailures.each { failure ->
-                                    env.OUTPUT_MESSAGE += "- ${failure.fileName}: ${failure.problem}\\n"
-                                }
-                            }
-                        } else {
-                            env.OUTPUT_MESSAGE += "⚠️ **Status:** ${status}\\n"
-                        }
-                        
-                    } catch (Exception e) {
-                        env.OUTPUT_MESSAGE += "❌ Error parsing result: ${e.message}\\n"
+                    // Sprawdź czy to była validation czy deployment
+                    if (result.checkOnly == true) {
+                        env.IS_VALIDATED = 'true'
+                        env.OUTPUT_MESSAGE += "\n**Validation Details:**\n"
+                    } else {
+                        env.IS_DEPLOYED = 'true'
+                        env.OUTPUT_MESSAGE += "\n**Deployment Details:**\n"
                     }
                     
-                    env.OUTPUT_MESSAGE += "\\n---\\n\\n"
+                    env.OUTPUT_MESSAGE += "- Deploy ID: `${result.id}`\n"
+                    env.OUTPUT_MESSAGE += "- Components: ${result.numberComponentsDeployed ?: 0} deployed, ${result.numberComponentErrors ?: 0} errors\n"
+                    env.OUTPUT_MESSAGE += "- Tests: ${result.numberTestsCompleted ?: 0} run, ${result.numberTestErrors ?: 0} failures\n"
+                    
+                    if (result.details?.componentFailures) {
+                        env.OUTPUT_MESSAGE += "\n**Errors:**\n"
+                        result.details.componentFailures.each { failure ->
+                            env.OUTPUT_MESSAGE += "- ${failure.fileName}: ${failure.problem}\n"
+                        }
+                    }
+                } else {
+                    env.OUTPUT_MESSAGE += "\n❌ **Validation/Deployment failed** - check logs\n"
                 }
             }
         }
+    }
+}
         
         // ===== STAGE 7: Merge PR =====
         stage('Merge Pull Request') {
@@ -445,7 +416,7 @@ pipeline {
                     def statusEmoji = buildStatus == 'SUCCESS' ? '✅' : '❌'
                     
                     def finalMessage = """
-## ${statusEmoji} Jenkins CI/CD Pipeline Report
+## :white_check_mark: Jenkins CI/CD Pipeline Report
 
 **Build:** [#${BUILD_NUMBER}](${BUILD_URL})
 **Status:** ${buildStatus}
@@ -459,9 +430,9 @@ ${env.OUTPUT_MESSAGE}
 ---
 
 **Summary:**
-- Approved: ${env.IS_APPROVED == 'true' ? '✅ Yes' : '⚠️ No'}
-- Validated: ${env.IS_VALIDATED == 'true' ? '✅ Yes' : '⚠️ No'}
-- Deployed: ${env.IS_DEPLOYED == 'true' ? '✅ Yes' : '❌ No'}
+- Approved: ${env.IS_APPROVED == 'true' ? ':white_check_mark: Yes' : ':x: No'}
+- Validated: ${env.IS_VALIDATED == 'true' ? ':white_check_mark: Yes' : ':x: No'}
+- Deployed: ${env.IS_DEPLOYED == 'true' ? ':white_check_mark: Yes' : ':x: No'}
 
 ---
 *Pipeline executed at: ${new Date()}*
