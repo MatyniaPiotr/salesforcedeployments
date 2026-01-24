@@ -33,28 +33,35 @@ pipeline {
     stages {
         
         // ===== STAGE 0: Filtrowanie triggerów =====
-        stage('Filter Triggers') {
-            steps {
-                script {
-                    def allowedActions = ['opened', 'synchronize', 'created', 'submitted']
-                    
-                    echo "========================================"
-                    echo "Webhook received!"
-                    echo "Action: ${env.pr_action}"
-                    echo "PR Number: ${env.pr_number ?: env.issue_number}"
-                    echo "Comment: ${env.comment_body}"
-                    echo "========================================"
-                    
-                    if (!(env.pr_action in allowedActions)) {
-                        echo "⏭️ Skipping pipeline - action '${env.pr_action}' not in allowed list"
-                        currentBuild.result = 'NOT_BUILT'
-                        error("Action not in allowed list")
-                    }
-                    
-                    echo "✅ Action '${env.pr_action}' is allowed - continuing pipeline"
-                }
+stage('Filter Triggers') {
+    steps {
+        script {
+            echo "========================================"
+            echo "Webhook received!"
+            echo "Action: ${env.pr_action}"
+            echo "PR Number: ${env.pr_number ?: env.issue_number}"
+            echo "Comment: ${env.comment_body}"
+            echo "========================================"
+            
+            // ⭐ NOWE: Ignoruj komentarze od Jenkinsa
+            if (env.comment_body?.contains('Jenkins CI/CD Pipeline Report')) {
+                echo "⚠️ Skipping - this is a Jenkins bot comment"
+                currentBuild.result = 'ABORTED'
+                error('Jenkins bot comment detected - aborting to prevent infinite loop')
             }
+            
+            def allowedActions = ['opened', 'synchronize', 'created', 'submitted']
+            
+            if (!(env.pr_action in allowedActions)) {
+                echo "⏭️ Skipping pipeline - action '${env.pr_action}' not in allowed list"
+                currentBuild.result = 'NOT_BUILT'
+                error("Action not in allowed list")
+            }
+            
+            echo "✅ Action '${env.pr_action}' is allowed - continuing pipeline"
         }
+    }
+}
         
         // ===== STAGE 1: Sprawdzenie zależności =====
         stage('Check Dependencies') {
