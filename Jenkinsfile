@@ -275,16 +275,16 @@ stage('Validate or Deploy') {
                         --json > deployment-result.json
                 """, returnStatus: true)
 
-                echo "⭐ SETTING IS_VALIDATED = true"
+                echo "SETTING IS_VALIDATED via currentBuild.description"
                 
                 // Tymczasowo - zawsze sukces (do testów pipeline)
-                env.IS_VALIDATED = 'true'
+                currentBuild.description = (currentBuild.description ?: '') + 'VALIDATED '
 
-                echo "⭐ IS_VALIDATED is now: ${env.IS_VALIDATED}"
-                
+                echo "currentBuild.description is now: ${currentBuild.description}"
+
                 env.OUTPUT_MESSAGE += "✅ **Validation attempted (check details in artifacts)**\n"
                 
-            } else if (commentText?.toLowerCase()?.contains('deploy')) {
+            } else if (commentText?.toLowerCase()?.contains('deploy')) { 
                 echo "Running DEPLOYMENT"
                 
                 bat(script: """
@@ -296,7 +296,7 @@ stage('Validate or Deploy') {
                 """, returnStatus: true)
                 
                 // Tymczasowo - zawsze sukces (do testów pipeline)
-                env.IS_DEPLOYED = 'true'
+                currentBuild.description = (currentBuild.description ?: '') + 'DEPLOYED '
                 env.OUTPUT_MESSAGE += "✅ **Deployment attempted (check details in artifacts)**\n"
                 
             } else {
@@ -435,8 +435,9 @@ stage('Validate or Deploy') {
                 echo "POST ACTIONS - DEBUG:"
                 echo "comment_body = '${env.comment_body}'"
                 echo "contains 'Pipeline Report'? = ${env.comment_body?.contains('Pipeline Report')}"
-                echo "IS_VALIDATED = ${env.IS_VALIDATED}"
-                echo "IS_DEPLOYED = ${env.IS_DEPLOYED}"
+                echo "currentBuild.description = '${currentBuild.description}'"
+                echo "contains VALIDATED? = ${currentBuild.description?.contains('VALIDATED')}"
+                echo "contains DEPLOYED? = ${currentBuild.description?.contains('DEPLOYED')}"
                 echo "========================================"
 
                  if (env.comment_body?.contains('Pipeline Report')) {
@@ -476,8 +477,8 @@ ${env.OUTPUT_MESSAGE}
 
 **Summary:**
 - Approved: ${env.IS_APPROVED == 'true' ? ':white_check_mark: Yes' : ':x: No'}
-- Validated: ${env.IS_VALIDATED == 'true' ? ':white_check_mark: Yes' : ':x: No'}
-- Deployed: ${env.IS_DEPLOYED == 'true' ? ':white_check_mark: Yes' : ':x: No'}
+- Validated: ${currentBuild.description?.contains('VALIDATED') ? ':white_check_mark: Yes' : ':x: No'}
+- Deployed: ${currentBuild.description?.contains('DEPLOYED') ? ':white_check_mark: Yes' : ':x: No'}
 
 ---
 *Pipeline executed at: ${new Date()}*
