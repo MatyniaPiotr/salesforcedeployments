@@ -274,9 +274,14 @@ stage('Validate or Deploy') {
                         --target-org SIT ^
                         --json > deployment-result.json
                 """, returnStatus: true)
+
+                echo "⭐ SETTING IS_VALIDATED = true"
                 
                 // Tymczasowo - zawsze sukces (do testów pipeline)
                 env.IS_VALIDATED = 'true'
+
+                echo "⭐ IS_VALIDATED is now: ${env.IS_VALIDATED}"
+                
                 env.OUTPUT_MESSAGE += "✅ **Validation attempted (check details in artifacts)**\n"
                 
             } else if (commentText?.toLowerCase()?.contains('deploy')) {
