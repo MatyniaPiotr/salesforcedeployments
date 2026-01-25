@@ -426,11 +426,19 @@ stage('Validate or Deploy') {
         always {
             script {
 
+                echo "========================================"
+                echo "POST ACTIONS - DEBUG:"
+                echo "comment_body = '${env.comment_body}'"
+                echo "contains 'Pipeline Report'? = ${env.comment_body?.contains('Pipeline Report')}"
+                echo "IS_VALIDATED = ${env.IS_VALIDATED}"
+                echo "IS_DEPLOYED = ${env.IS_DEPLOYED}"
+                echo "========================================"
+
                  if (env.comment_body?.contains('Pipeline Report')) {
                 echo "⚠️ Skipping GitHub comment - triggered by Jenkins bot"
                 return
             }
-            
+
                 echo "========================================"
                 echo "Sending final comment to GitHub..."
                 echo "========================================"
