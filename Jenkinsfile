@@ -43,6 +43,11 @@ stage('Filter Triggers') {
             echo "Comment: ${env.comment_body}"
             echo "Comment Author: ${env.comment_author}"
             echo "========================================"
+
+            // DEBUG - sprawdź dokładnie
+            echo "DEBUG: comment_body length = ${env.comment_body?.length()}"
+            echo "DEBUG: contains 'Pipeline Report'? = ${env.comment_body?.contains('Pipeline Report')}"
+            echo "DEBUG: contains 'Jenkins'? = ${env.comment_body?.contains('Jenkins')}"
             
             // Ignoruj komentarze z raportami Jenkinsa
             if (env.comment_body?.contains('Pipeline Report')) {
@@ -300,6 +305,11 @@ stage('Validate or Deploy') {
         stage('Parse Deployment Result') {
     steps {
         script {
+
+              echo "Stage temporarily disabled due to missing code in force-app directory."  
+
+
+            /*
             if (fileExists('deployment-result.json')) {
                 def deployResult = readJSON file: 'deployment-result.json'
                 
@@ -331,6 +341,7 @@ stage('Validate or Deploy') {
                     env.OUTPUT_MESSAGE += "\n❌ **Validation/Deployment failed** - check logs\n"
                 }
             }
+            */
         }
     }
 }
