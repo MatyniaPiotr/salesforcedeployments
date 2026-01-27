@@ -602,11 +602,17 @@ pipeline {
                 echo "contains DEPLOYED? = ${currentBuild.description?.contains('DEPLOYED')}"
                 echo "========================================"
 
+                // don't post when OUTPUT_MESSAGE is empty
+                if (!env.OUTPUT_MESSAGE || env.OUTPUT_MESSAGE == '') {
+                    echo "OUTPUT_MESSAGE is empty - skipping GitHub comment"
+                    return
+                }
+
                 // === Prevent Loop ===
                 // Don't post comment if this build was triggered by Jenkins bot
                 // This prevents: Build → Comment → Webhook → Build → Comment → ∞
                 if (env.comment_body?.contains('Pipeline Report')) {
-                    echo "⚠️ Skipping GitHub comment - triggered by Jenkins bot"
+                    echo "Skipping GitHub comment - triggered by Jenkins bot"
                     return  // Exit without posting comment
                 }
 
