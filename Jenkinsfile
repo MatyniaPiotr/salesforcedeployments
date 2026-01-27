@@ -582,59 +582,80 @@ pipeline {
         }
     }
     
-    // =====================================================
-    // POST ACTIONS
-    // =====================================================
-    // Execute after all stages complete (success or failure)
-    // =====================================================
+        // ===== POST ACTIONS =====
+    // Purpose: Send pipeline execution report as comment to GitHub PR
+    // Executes: Always (regardless of build success/failure)
     post {
-        // === ALWAYS Block ===
-        // Runs regardless of build result
         always {
             script {
-                // === Debug Information ===
+
+                // ===== DEBUG OUTPUT =====
+                // Log all relevant variables for troubleshooting
                 echo "========================================"
                 echo "POST ACTIONS - DEBUG:"
                 echo "comment_body = '${env.comment_body}'"
                 echo "contains 'Pipeline Report'? = ${env.comment_body?.contains('Pipeline Report')}"
+                echo "currentBuild.result = '${currentBuild.result}'"
                 echo "currentBuild.description = '${currentBuild.description}'"
                 echo "contains VALIDATED? = ${currentBuild.description?.contains('VALIDATED')}"
                 echo "contains DEPLOYED? = ${currentBuild.description?.contains('DEPLOYED')}"
                 echo "========================================"
 
-                // Post comment only if stages were executed
-                if (currentBuild.result == 'ABORTED' && (!currentBuild.description || currentBuild.description == '')) {
-                    echo "Build aborted without running stages - skipping GitHub comment"
+                // ===== CONDITION 1: Was this build triggered by Jenkins bot comment? =====
+                // Check if the WEBHOOK was triggered by a comment containing "Pipeline Report"
+                // This prevents infinite loop: Build → Comment → Webhook → Build → Comment → ∞
+                // Note: check the TRIGGER (comment_body), not the OUTPUT of this build
+                def triggeredByBotComment = env.comment_body?.contains('Pipeline Report')
+                
+                if (triggeredByBotComment) {
+                    echo "⚠️ This build was triggered by Jenkins bot comment"
+                    echo "⚠️ Build result: ${currentBuild.result}"
+                    
+                    // If build aborted in Stage 0 (detected bot) - DON'T post comment
+                    // This is the expected behavior - Stage 0 aborts, Post action skips comment
+                    if (currentBuild.result == 'ABORTED') {
+                        echo "✅ Build correctly aborted to prevent loop - no comment needed"
+                        return
+                    }
+                }
+
+                // ===== CONDITION 2: Did any stages execute? =====
+                // Check if pipeline executed any stages (description is set in Stage 5)
+                // If build aborted before stages ran, skip comment (nothing to report)
+                def stagesExecuted = currentBuild.description && currentBuild.description != 'null' && currentBuild.description != ''
+                
+                if (!stagesExecuted && currentBuild.result == 'ABORTED') {
+                    echo "⚠️ Build aborted without executing stages - skipping comment"
                     return
                 }
 
-                // === Prevent Loop ===
-                // Don't post comment if this build was triggered by Jenkins bot
-                // This prevents: Build → Comment → Webhook → Build → Comment → ∞
-                if (env.comment_body?.contains('Pipeline Report')) {
-                    echo "Skipping GitHub comment - triggered by Jenkins bot"
-                    return  // Exit without posting comment
+                // ===== CONDITION 3: Is PR number available? =====
+                // Get PR/Issue number from webhook (required for posting comment)
+                def prNum = env.pr_number ?: env.issue_number
+                
+                if (!prNum || prNum == 'null' || prNum == '') {
+                    echo "⚠️ No PR/Issue number - cannot post comment"
+                    return
                 }
 
+                // ===== ALL CHECKS PASSED - POST COMMENT TO GITHUB =====
                 echo "========================================"
-                echo "Sending final comment to GitHub..."
+                echo "✅ All checks passed - posting comment to GitHub"
                 echo "========================================"
                 
                 try {
-                    // === Get PR/Issue Number ===
-                    def prNum = env.pr_number ?: env.issue_number
-                    
-                    // Validate PR number exists
-                    if (!prNum || prNum == 'null' || prNum == '') {
-                        echo "No PR/Issue number - skipping comment"
-                        return
-                    }
-                    
-                    // === Prepare Final Message ===
+                    // ===== PREPARE REPORT =====
+                    // Determine build status (SUCCESS/FAILURE/ABORTED)
                     def buildStatus = currentBuild.result ?: 'SUCCESS'
                     def statusEmoji = buildStatus == 'SUCCESS' ? '✅' : '❌'
                     
-                    // Build comprehensive markdown report
+                    // ===== FIX: Handle empty OUTPUT_MESSAGE =====
+                    // If OUTPUT_MESSAGE is null/empty (early abort), use placeholder
+                    // This prevents "null" appearing in GitHub comment
+                    def outputContent = env.OUTPUT_MESSAGE ?: "_No stage output (build may have been aborted early)_"
+                    
+                    // ===== BUILD MARKDOWN REPORT =====
+                    // Comprehensive report with build info, stage output, and summary
                     def finalMessage = """
 ## :white_check_mark: Jenkins CI/CD Pipeline Report
 
@@ -645,7 +666,7 @@ pipeline {
 
 ---
 
-${env.OUTPUT_MESSAGE}
+${outputContent}
 
 ---
 
@@ -658,18 +679,22 @@ ${env.OUTPUT_MESSAGE}
 *Pipeline executed at: ${new Date()}*
                     """.trim()
                     
-                    // === Escape Message for JSON ===
-                    // Escape special characters for safe JSON transmission
+                    // ===== ESCAPE MESSAGE FOR JSON =====
+                    // Escape special characters to ensure valid JSON payload
+                    // \\ → \\\\, " → \", \n → \\n, \r → removed
                     def escapedMessage = finalMessage
-                        .replaceAll('\\\\', '\\\\\\\\')  // Escape backslashes
-                        .replaceAll('"', '\\\\"')         // Escape quotes
-                        .replaceAll('\n', '\\\\n')        // Escape newlines
-                        .replaceAll('\r', '')             // Remove carriage returns
+                        .replaceAll('\\\\', '\\\\\\\\')
+                        .replaceAll('"', '\\\\"')
+                        .replaceAll('\n', '\\\\n')
+                        .replaceAll('\r', '')
                     
-                    // === Post Comment via GitHub API ===
+                    // ===== POST COMMENT VIA GITHUB API =====
                     // POST /repos/{owner}/{repo}/issues/{issue_number}/comments
+                    // Note: PR comments use /issues/ endpoint (not /pulls/)
                     def apiUrl = "https://api.github.com/repos/${REPO_NAME}/issues/${prNum}/comments"
                     
+                    // curl -X POST = HTTP POST method
+                    // -d = JSON payload with escaped message body
                     bat """
                         @curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/vnd.github.v3+json" -d "{\\"body\\":\\"${escapedMessage}\\"}" ${apiUrl}
                     """
@@ -681,14 +706,14 @@ ${env.OUTPUT_MESSAGE}
             }
         }
         
-        // === SUCCESS Block ===
-        // Only runs if build was successful
+        // ===== SUCCESS BLOCK =====
+        // Executes ONLY if pipeline completed successfully
         success {
             echo "✅ Pipeline completed successfully!"
         }
         
-        // === FAILURE Block ===
-        // Only runs if build failed
+        // ===== FAILURE BLOCK =====
+        // Executes ONLY if pipeline failed (error() in any stage)
         failure {
             echo "❌ Pipeline failed!"
         }
