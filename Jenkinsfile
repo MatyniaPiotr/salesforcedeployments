@@ -119,18 +119,18 @@ pipeline {
         stage('Check Dependencies') {
             steps {
                 script {
-                    env.OUTPUT_MESSAGE += "🔍 **Checking dependencies...**\n\n"
+                    env.OUTPUT_MESSAGE += "**Checking dependencies...**\n\n"
                     
                     // === Check Git Installation ===
                     try {
                         echo "Checking Git..."
                         // @ prefix suppresses command echo in Windows batch
                         def gitVersion = bat(script: '@git --version', returnStdout: true).trim()
-                        echo "✅ Git installed: ${gitVersion}"
-                        env.OUTPUT_MESSAGE += "✅ Git: ${gitVersion}\n"
+                        echo "Git installed: ${gitVersion}"
+                        env.OUTPUT_MESSAGE += "Git: ${gitVersion}\n"
                     } catch (Exception gitError) {
-                        echo "❌ Git not found!"
-                        env.OUTPUT_MESSAGE += "❌ Git not found\n"
+                        echo "Git not found!"
+                        env.OUTPUT_MESSAGE += "Git not found\n"
                         error("Git is required")  // Stop pipeline if Git not found
                     }
                     
@@ -138,11 +138,11 @@ pipeline {
                     try {
                         echo "Checking Salesforce CLI..."
                         def sfVersion = bat(script: '@sf --version', returnStdout: true).trim()
-                        echo "✅ Salesforce CLI found: ${sfVersion}"
-                        env.OUTPUT_MESSAGE += "✅ Salesforce CLI: ${sfVersion}\n"
+                        echo "Salesforce CLI found: ${sfVersion}"
+                        env.OUTPUT_MESSAGE += "Salesforce CLI: ${sfVersion}\n"
                     } catch (Exception sfError) {
-                        echo "❌ SF CLI not found"
-                        env.OUTPUT_MESSAGE += "❌ SF CLI not found\n"
+                        echo "SF CLI not found"
+                        env.OUTPUT_MESSAGE += "SF CLI not found\n"
                         error("Salesforce CLI is required")  // Stop pipeline if SF CLI not found
                     }
                     
@@ -164,7 +164,7 @@ pipeline {
         stage('Clone and Merge') {
             steps {
                 script {
-                    env.OUTPUT_MESSAGE += "📥 **Cloning repository and merging branches...**\n\n"
+                    env.OUTPUT_MESSAGE += "**Cloning repository and merging branches...**\n\n"
                     
                     try {
                         // === Clean Workspace ===
@@ -178,7 +178,7 @@ pipeline {
                         bat """
                             git clone https://${GITHUB_TOKEN}@github.com/${REPO_NAME}.git .
                         """
-                        env.OUTPUT_MESSAGE += "✅ Repository cloned\n"
+                        env.OUTPUT_MESSAGE += "Repository cloned\n"
                         
                         // === Checkout Target Branch ===
                         // Switch to the branch where changes will be deployed (e.g., SIT)
@@ -186,7 +186,7 @@ pipeline {
                         bat """
                             git checkout ${PR_BRANCH}
                         """
-                        env.OUTPUT_MESSAGE += "✅ Checked out to: ${PR_BRANCH}\n"
+                        env.OUTPUT_MESSAGE += "Checked out to: ${PR_BRANCH}\n"
                         
                         // === Merge Source Branch (if exists) ===
                         // For PR events, merge feature branch into target branch
@@ -202,19 +202,19 @@ pipeline {
                             
                             // Check if merge was successful (exit code 0)
                             if (mergeResult != 0) {
-                                env.OUTPUT_MESSAGE += "⚠️ **MERGE CONFLICT**\n"
+                                env.OUTPUT_MESSAGE += "**MERGE CONFLICT**\n"
                                 error("Merge conflict detected")  // Stop pipeline on conflict
                             } else {
-                                env.OUTPUT_MESSAGE += "✅ Merged successfully: ${SOURCE_BRANCH} → ${PR_BRANCH}\n"
+                                env.OUTPUT_MESSAGE += "Merged successfully: ${SOURCE_BRANCH} → ${PR_BRANCH}\n"
                             }
                         } else {
                             // Comment-triggered builds don't have a source branch to merge
                             echo "No source branch to merge (comment trigger)"
-                            env.OUTPUT_MESSAGE += "ℹ️ No branch merge needed (comment trigger)\n"
+                            env.OUTPUT_MESSAGE += "No branch merge needed (comment trigger)\n"
                         }
                         
                     } catch (Exception e) {
-                        env.OUTPUT_MESSAGE += "❌ Error during clone/merge: ${e.message}\n"
+                        env.OUTPUT_MESSAGE += "Error during clone/merge: ${e.message}\n"
                         throw e  // Re-throw to fail the build
                     }
                     
@@ -234,7 +234,7 @@ pipeline {
         stage('Authenticate to Salesforce') {
             steps {
                 script {
-                    env.OUTPUT_MESSAGE += "🔐 **Authenticating to Salesforce...**\n\n"
+                    env.OUTPUT_MESSAGE += "**Authenticating to Salesforce...**\n\n"
                     
                     try {
                         // === Load Credentials from Jenkins ===
@@ -267,7 +267,7 @@ pipeline {
                             
                             // === Verify Authentication ===
                             if (authResult == 0) {
-                                env.OUTPUT_MESSAGE += "✅ **Authenticated successfully to Salesforce**\n"
+                                env.OUTPUT_MESSAGE += "**Authenticated successfully to Salesforce**\n"
                                 
                                 // Get org info for verification
                                 def orgInfo = bat(script: "@sf org display --json", returnStdout: true).trim()
@@ -282,13 +282,13 @@ pipeline {
                                     env.OUTPUT_MESSAGE += "- Org ID: Could not retrieve\n"
                                 }
                             } else {
-                                env.OUTPUT_MESSAGE += "❌ **Authentication failed**\n"
+                                env.OUTPUT_MESSAGE += "**Authentication failed**\n"
                                 error("Salesforce JWT authentication failed")
                             }
                         }
                         
                     } catch (Exception e) {
-                        env.OUTPUT_MESSAGE += "❌ Authentication error: ${e.message}\n"
+                        env.OUTPUT_MESSAGE += "Authentication error: ${e.message}\n"
                         env.OUTPUT_MESSAGE += "\n**Troubleshooting:**\n"
                         env.OUTPUT_MESSAGE += "- Verify Connected App settings\n"
                         env.OUTPUT_MESSAGE += "- Check JWT key file\n"
@@ -312,7 +312,7 @@ pipeline {
         stage('Check Approvals') {
             steps {
                 script {
-                    env.OUTPUT_MESSAGE += "👥 **Checking PR approvals...**\n\n"
+                    env.OUTPUT_MESSAGE += "**Checking PR approvals...**\n\n"
                     
                     try {
                         def prNum = env.pr_number ?: env.issue_number
@@ -335,13 +335,13 @@ pipeline {
                         // === Update Status ===
                         if (approvalCount > 0) {
                             env.IS_APPROVED = 'true'
-                            env.OUTPUT_MESSAGE += "✅ **${approvalCount} approval(s) found**\n"
+                            env.OUTPUT_MESSAGE += "**${approvalCount} approval(s) found**\n"
                         } else {
-                            env.OUTPUT_MESSAGE += "⚠️ **No approvals found**\n"
+                            env.OUTPUT_MESSAGE += "**No approvals found**\n"
                         }
                         
                     } catch (Exception e) {
-                        env.OUTPUT_MESSAGE += "⚠️ Could not check approvals: ${e.message}\n"
+                        env.OUTPUT_MESSAGE += "Could not check approvals: ${e.message}\n"
                     }
                     
                     env.OUTPUT_MESSAGE += "\n---\n\n"
@@ -372,7 +372,7 @@ pipeline {
                     // === VALIDATE Command ===
                     // Triggered by comment containing "validate" (case-insensitive)
                     if (commentText?.toLowerCase()?.contains('validate')) {
-                        env.OUTPUT_MESSAGE += "🔍 **Running VALIDATION...**\n\n"
+                        env.OUTPUT_MESSAGE += "**Running VALIDATION...**\n\n"
                         echo "Running VALIDATION"
                         
                         // Execute validation deployment (no changes applied)
@@ -386,16 +386,16 @@ pipeline {
                         // === Set Validation Flag ===
                         // Use currentBuild.description instead of env variable
                         // (env variables have issues in Declarative Pipeline)
-                        echo "⭐ SETTING IS_VALIDATED via currentBuild.description"
+                        echo "SETTING IS_VALIDATED via currentBuild.description"
                         currentBuild.description = (currentBuild.description ?: '') + 'VALIDATED '
-                        echo "⭐ currentBuild.description is now: ${currentBuild.description}"
+                        echo "currentBuild.description is now: ${currentBuild.description}"
                         
-                        env.OUTPUT_MESSAGE += "✅ **Validation attempted (check details in artifacts)**\n"
+                        env.OUTPUT_MESSAGE += "**Validation attempted (check details in artifacts)**\n"
                         
                     // === DEPLOY Command ===
                     // Triggered by comment containing "deploy" (case-insensitive)
                     } else if (commentText?.toLowerCase()?.contains('deploy')) {
-                        env.OUTPUT_MESSAGE += "🚀 **Running DEPLOYMENT...**\n\n"
+                        env.OUTPUT_MESSAGE += "**Running DEPLOYMENT...**\n\n"
                         echo "Running DEPLOYMENT"
                         
                         // Execute actual deployment (changes applied to org)
@@ -409,12 +409,12 @@ pipeline {
                         
                         // === Set Deployment Flag ===
                         currentBuild.description = (currentBuild.description ?: '') + 'DEPLOYED '
-                        env.OUTPUT_MESSAGE += "✅ **Deployment attempted (check details in artifacts)**\n"
+                        env.OUTPUT_MESSAGE += "**Deployment attempted (check details in artifacts)**\n"
                         
                     } else {
                         // No recognized command in comment
                         echo "No valid command - skipping validation/deployment"
-                        env.OUTPUT_MESSAGE += "ℹ️ No validate/deploy command detected\n"
+                        env.OUTPUT_MESSAGE += "No validate/deploy command detected\n"
                     }
 
                     env.OUTPUT_MESSAGE += "\n---\n\n" 
@@ -477,7 +477,7 @@ pipeline {
                                 }
                             }
                         } else {
-                            env.OUTPUT_MESSAGE += "\n❌ **Validation/Deployment failed** - check logs\n"
+                            env.OUTPUT_MESSAGE += "\n**Validation/Deployment failed** - check logs\n"
                         }
                     }
                     */
@@ -505,14 +505,14 @@ pipeline {
             }
             steps {
                 script {
-                    env.OUTPUT_MESSAGE += "🔀 **Merging Pull Request...**\n\n"
+                    env.OUTPUT_MESSAGE += "**Merging Pull Request...**\n\n"
                     
                     try {
                         def prNum = env.pr_number ?: env.issue_number
                         
                         // Verify PR number exists
                         if (!prNum || prNum == 'null') {
-                            env.OUTPUT_MESSAGE += "⚠️ No PR number - cannot merge\n"
+                            env.OUTPUT_MESSAGE += "No PR number - cannot merge\n"
                             env.OUTPUT_MESSAGE += "\n---\n\n"
                             return
                         }
@@ -536,15 +536,15 @@ pipeline {
                         def mergeResult = readJSON text: mergeResponse
                         
                         if (mergeResult.merged == true) {
-                            env.OUTPUT_MESSAGE += "✅ **PR #${prNum} merged successfully!**\n"
+                            env.OUTPUT_MESSAGE += "**PR #${prNum} merged successfully!**\n"
                             env.OUTPUT_MESSAGE += "Commit SHA: ${mergeResult.sha}\n"
                         } else {
-                            env.OUTPUT_MESSAGE += "⚠️ Merge attempt completed but status unclear\n"
+                            env.OUTPUT_MESSAGE += "Merge attempt completed but status unclear\n"
                             env.OUTPUT_MESSAGE += "Message: ${mergeResult.message ?: 'N/A'}\n"
                         }
                         
                     } catch (Exception e) {
-                        env.OUTPUT_MESSAGE += "❌ Merge error: ${e.message}\n"
+                        env.OUTPUT_MESSAGE += "Merge error: ${e.message}\n"
                     }
                     
                     env.OUTPUT_MESSAGE += "\n---\n\n"
@@ -563,7 +563,7 @@ pipeline {
         stage('Archive Artifacts') {
             steps {
                 script {
-                    env.OUTPUT_MESSAGE += "📦 **Archiving artifacts...**\n\n"
+                    env.OUTPUT_MESSAGE += "**Archiving artifacts...**\n\n"
                     
                     try {
                         // === Archive Deployment Result JSON ===
@@ -576,9 +576,9 @@ pipeline {
                         // Save the code that was deployed for traceability
                         archiveArtifacts artifacts: "${DEPLOY_DIR}/**/*", allowEmptyArchive: true
                         
-                        env.OUTPUT_MESSAGE += "✅ Artifacts archived\n"
+                        env.OUTPUT_MESSAGE += "Artifacts archived\n"
                     } catch (Exception e) {
-                        env.OUTPUT_MESSAGE += "⚠️ Could not archive: ${e.message}\n"
+                        env.OUTPUT_MESSAGE += "Could not archive: ${e.message}\n"
                     }
                     
                     env.OUTPUT_MESSAGE += "\n---\n\n"
