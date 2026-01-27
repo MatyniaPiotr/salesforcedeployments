@@ -691,7 +691,6 @@ ${outputContent}
                     // \r → removed (Windows line endings)
                     def escapedMessage = finalMessage
                     .replaceAll('"', '\\\\"')
-                    .replaceAll('\n', '\\\\n')
                     .replaceAll('\r', '')
                     
                     // ===== POST COMMENT VIA GITHUB API =====
