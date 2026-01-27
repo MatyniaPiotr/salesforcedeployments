@@ -340,11 +340,9 @@ pipeline {
             }
         }
         
-        // =====================================================
-        // STAGE 5: VALIDATE OR DEPLOY
         
         // =====================================================
-        // STAGE 5.5: BUILD DIFF PACKAGE (SIMULATION)
+        // STAGE 4.5: BUILD DIFF PACKAGE (SIMULATION)
         // =====================================================
         // Purpose:
         // - Learn and demonstrate delta deployment without actual deployment
@@ -477,9 +475,8 @@ pipeline {
             }
         }
         
-            }
-        }
-        
+        // =====================================================
+        // STAGE 5: VALIDATE OR DEPLOY
         // =====================================================
         // Purpose:
         // - Check comment for "Validate" or "Deploy" keywords
@@ -690,8 +687,6 @@ pipeline {
         stage('Archive Artifacts') {
             steps {
                 script {
-                    env.OUTPUT_MESSAGE += "### Archiving artifacts\n\n"
-                    
                     try {
                         // === Archive Deployment Result JSON ===
                         // Contains detailed info about validation/deployment
@@ -703,17 +698,13 @@ pipeline {
                         // Save the code that was deployed for traceability
                         archiveArtifacts artifacts: "${DEPLOY_DIR}/**/*", allowEmptyArchive: true
                         
-                        env.OUTPUT_MESSAGE += "- Artifacts archived\n"
                     } catch (Exception e) {
-                        env.OUTPUT_MESSAGE += "- Could not archive: ${e.message}\n"
+                        echo "Could not archive: ${e.message}"
                     }
-                    
-                    env.OUTPUT_MESSAGE += "\n---\n\n"
                 }
             }
         }
     }
-    
     
     // ===== POST ACTIONS =====
     // Purpose: Send pipeline execution report as comment to GitHub PR
