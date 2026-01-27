@@ -690,6 +690,8 @@ pipeline {
         stage('Archive Artifacts') {
             steps {
                 script {
+                    env.OUTPUT_MESSAGE += "### Archiving artifacts\n\n"
+                    
                     try {
                         // === Archive Deployment Result JSON ===
                         // Contains detailed info about validation/deployment
@@ -701,13 +703,17 @@ pipeline {
                         // Save the code that was deployed for traceability
                         archiveArtifacts artifacts: "${DEPLOY_DIR}/**/*", allowEmptyArchive: true
                         
+                        env.OUTPUT_MESSAGE += "- Artifacts archived\n"
                     } catch (Exception e) {
-                        echo "Could not archive: ${e.message}"
+                        env.OUTPUT_MESSAGE += "- Could not archive: ${e.message}\n"
                     }
+                    
+                    env.OUTPUT_MESSAGE += "\n---\n\n"
                 }
             }
         }
     }
+    
     
     // ===== POST ACTIONS =====
     // Purpose: Send pipeline execution report as comment to GitHub PR
