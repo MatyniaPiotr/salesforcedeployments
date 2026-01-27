@@ -384,25 +384,35 @@ pipeline {
                         }
                         
                         // === Step 2: Detect what branch to compare ===
-                        def targetBranch = "origin/${PR_BRANCH}"
-                        // FIX: Don't use origin/null, just use HEAD
-                        def sourceBranch = (SOURCE_BRANCH && SOURCE_BRANCH != 'null') ? "origin/${SOURCE_BRANCH}" : "HEAD"
+                        // For comment triggers: compare current workspace (HEAD) vs target branch
+                        // For PR events: compare source branch vs target branch
+                        def fromRef = "origin/${PR_BRANCH}"  // Base/target branch (older)
+                        def toRef = (SOURCE_BRANCH && SOURCE_BRANCH != 'null') ? "origin/${SOURCE_BRANCH}" : "HEAD"  // Source/current (newer)
 
                         echo "Comparing changes:"
-                        echo "- Target (base): ${targetBranch}"
-                        echo "- Source (head): ${sourceBranch}"
+                        echo "- From (base): ${fromRef}"
+                        echo "- To (head): ${toRef}"
 
-                        // === Step 3: Create output directory first ===
+                        // === Step 3: Get actual commit SHAs (plugin needs SHAs, not refs) ===
+                        echo "Resolving commit SHAs..."
+                        def fromSHA = bat(script: "@git rev-parse ${fromRef}", returnStdout: true).trim()
+                        def toSHA = bat(script: "@git rev-parse ${toRef}", returnStdout: true).trim()
+
+                        echo "- From SHA: ${fromSHA}"
+                        echo "- To SHA: ${toSHA}"
+
+                        // === Step 4: Create output directory first ===
                         echo "Creating src_delta directory..."
                         bat 'if not exist src_delta mkdir src_delta'
-                        // === Step 4: Use sf sgd to generate delta package ===
+                        
+                        // === Step 5: Use sf sgd to generate delta package ===
                         echo "Running sf sgd source:delta..."
 
                         def sgdResult = bat(
                             script: """
                                  sf sgd source:delta ^
-                                    --to ${sourceBranch} ^
-                                    --from ${targetBranch} ^
+                                    --to ${toSHA} ^
+                                    --from ${fromSHA} ^
                                     --output src_delta ^
                                     --generate-delta ^
                                     --json
@@ -410,9 +420,14 @@ pipeline {
                         returnStatus: true
                         )
                         
-                        // === Step 4: Check if delta folder was created ===
+                        // === Step 6: Check if delta folder was created ===
                         if (fileExists('src_delta')) {
                             echo "✅ Delta package created in src_delta/"
+                            
+                            // DEBUG: Show folder structure
+                            echo "=== src_delta folder contents ==="
+                            bat 'dir /S src_delta'
+                            echo "================================="
                             
                             // List all files that would be deployed
                             def deltaFiles = bat(
@@ -459,6 +474,9 @@ pipeline {
                     
                     env.OUTPUT_MESSAGE += "\n---\n\n"
                 }
+            }
+        }
+        
             }
         }
         
