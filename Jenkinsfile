@@ -709,15 +709,19 @@ post {
                 echo "Failed to post comment: ${e.message}"
             }
         }  
-
-    }      
-
+    }  
+    
     // ===== SUCCESS BLOCK =====
+    // Only runs if build was successful
     success {
         echo "Pipeline completed successfully!"
     }
     
+    // ===== FAILURE BLOCK =====
+    // Only runs if build failed
     failure {
         echo "Pipeline failed!"
     }
-}          
+}  
+
+}  
