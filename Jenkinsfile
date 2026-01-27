@@ -78,20 +78,15 @@ pipeline {
                     echo "Comment Author: ${env.comment_author}"
                     echo "========================================"
 
-                    // === Debug Comment Content ===
-                    // Check if comment contains keywords to detect Jenkins bot
-                    echo "DEBUG: comment_body length = ${env.comment_body?.length()}"
-                    echo "DEBUG: contains 'Pipeline Report'? = ${env.comment_body?.contains('Pipeline Report')}"
-                    echo "DEBUG: contains 'Jenkins'? = ${env.comment_body?.contains('Jenkins')}"
-                    
-                    // === Prevent Infinite Loop ===
-                    // Jenkins posts a comment → GitHub triggers webhook → Jenkins posts again → LOOP!
-                    // Solution: Detect Jenkins-generated comments and abort
-                    if (env.comment_body?.contains('Pipeline Report')) {
-                        echo "Skipping - this is a Jenkins bot comment"
+                    // === Anti-Loop: Check AUTHOR + content ===
+                    if (env.comment_author == 'jenkins' && env.comment_body?.contains('Pipeline Report')) {
+                    echo "JENKINS BOT DETECTED - Skipping loop"
                         currentBuild.result = 'ABORTED'
-                        error('Jenkins bot comment detected - aborting to prevent infinite loop')
+                        error('Jenkins bot skipped')
+                        return
                     }
+                    
+                    echo "USER COMMENT - Anti-loop PASSED!"
                     
                     // === Filter Webhook Actions ===
                     // Only process specific GitHub webhook actions
@@ -724,4 +719,4 @@ post {
     }
 }  
 
-}  
+}    
