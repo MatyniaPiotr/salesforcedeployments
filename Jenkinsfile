@@ -342,6 +342,125 @@ pipeline {
         
         // =====================================================
         // STAGE 5: VALIDATE OR DEPLOY
+        
+        // =====================================================
+        // STAGE 5.5: BUILD DIFF PACKAGE (SIMULATION)
+        // =====================================================
+        // Purpose:
+        // - Learn and demonstrate delta deployment without actual deployment
+        // - Use sf-sgd (Salesforce Git Delta) to detect changes between commits
+        // - Create src_delta/ folder with only changed files
+        // - Log what WOULD be deployed (educational/proof-of-concept)
+        // 
+        // Why simulation?
+        // - This project has only org settings (not deployable between orgs)
+        // - Real projects would deploy the src_delta/ instead of full force-app/
+        // - Shows understanding of optimization techniques
+        // =====================================================
+        stage('Build Diff Package') {
+            steps {
+                script {
+                    env.OUTPUT_MESSAGE += "### Building Deployment Package (Delta)\n\n"
+                    
+                    try {
+                        echo "=========================================="
+                        echo "DIFF PACKAGE BUILDER - Educational Simulation"
+                        echo "=========================================="
+                        
+                        // === Step 1: Check if sf-sgd plugin is installed ===
+                        echo "Checking for Salesforce Git Delta plugin..."
+                        def sgdCheck = bat(
+                            script: '@sf plugins | findstr "sfdx-git-delta"',
+                            returnStatus: true
+                        )
+                        
+                        if (sgdCheck != 0) {
+                            echo "⚠️ sf-sgd plugin not installed"
+                            echo "Installing sfdx-git-delta plugin..."
+                            bat '@echo y | sf plugins install sfdx-git-delta'
+                            env.OUTPUT_MESSAGE += "- Installed sfdx-git-delta plugin\n"
+                        } else {
+                            echo "✅ sfdx-git-delta plugin already installed"
+                        }
+                        
+                        // === Step 2: Detect what branch to compare ===
+                        // For PR events: compare source branch vs target branch
+                        // For comment triggers: compare current HEAD vs target branch
+                        def targetBranch = "origin/${PR_BRANCH}"
+                        def sourceBranch = SOURCE_BRANCH ? "origin/${SOURCE_BRANCH}" : "HEAD"
+                        
+                        echo "Comparing changes:"
+                        echo "- Target (base): ${targetBranch}"
+                        echo "- Source (head): ${sourceBranch}"
+                        
+                        // === Step 3: Use sf sgd to generate delta package ===
+                        // This creates package.xml with only changed components
+                        echo "Running sf sgd source:delta..."
+                        
+                        def sgdResult = bat(
+                            script: """
+                                sf sgd source:delta ^
+                                    --to ${sourceBranch} ^
+                                    --from ${targetBranch} ^
+                                    --output src_delta ^
+                                    --generate-delta ^
+                                    --json
+                            """,
+                            returnStatus: true
+                        )
+                        
+                        // === Step 4: Check if delta folder was created ===
+                        if (fileExists('src_delta')) {
+                            echo "✅ Delta package created in src_delta/"
+                            
+                            // List all files that would be deployed
+                            def deltaFiles = bat(
+                                script: '@dir /B /S src_delta',
+                                returnStdout: true
+                            ).trim()
+                            
+                            if (deltaFiles) {
+                                def fileCount = deltaFiles.split('\n').size()
+                                echo "📦 Delta package contains ${fileCount} file(s)"
+                                echo "Files to be deployed:"
+                                echo "${deltaFiles}"
+                                
+                                env.OUTPUT_MESSAGE += "- Delta package: ${fileCount} changed file(s)\n"
+                                env.OUTPUT_MESSAGE += "- Location: src_delta/\n"
+                                
+                                // === Educational Note ===
+                                echo ""
+                                echo "ℹ️ EDUCATIONAL NOTE:"
+                                echo "In a real project, the next stage would deploy:"
+                                echo "  sf project deploy validate --source-dir src_delta"
+                                echo "Instead of:"
+                                echo "  sf project deploy validate --source-dir force-app"
+                                echo ""
+                                echo "This deploys ONLY changed files, not entire codebase!"
+                                echo "Benefits: Faster deployment, fewer conflicts, clearer logs"
+                                
+                            } else {
+                                echo "ℹ️ No changes detected"
+                                env.OUTPUT_MESSAGE += "- No metadata changes detected\n"
+                            }
+                            
+                        } else {
+                            echo "⚠️ src_delta folder not created (no changes or plugin error)"
+                            env.OUTPUT_MESSAGE += "- No delta package created (no changes)\n"
+                        }
+                        
+                    } catch (Exception e) {
+                        // Don't fail the build if diff detection fails
+                        echo "⚠️ Diff package builder encountered an error: ${e.message}"
+                        echo "Continuing with full deployment..."
+                        env.OUTPUT_MESSAGE += "- Diff detection skipped (error occurred)\n"
+                    }
+                    
+                    env.OUTPUT_MESSAGE += "\n---\n\n"
+                }
+            }
+        }
+        
         // =====================================================
         // Purpose:
         // - Check comment for "Validate" or "Deploy" keywords
