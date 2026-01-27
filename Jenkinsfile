@@ -384,29 +384,30 @@ pipeline {
                         }
                         
                         // === Step 2: Detect what branch to compare ===
-                        // For PR events: compare source branch vs target branch
-                        // For comment triggers: compare current HEAD vs target branch
                         def targetBranch = "origin/${PR_BRANCH}"
-                        def sourceBranch = SOURCE_BRANCH ? "origin/${SOURCE_BRANCH}" : "HEAD"
-                        
+                        // FIX: Don't use origin/null, just use HEAD
+                        def sourceBranch = (SOURCE_BRANCH && SOURCE_BRANCH != 'null') ? "origin/${SOURCE_BRANCH}" : "HEAD"
+
                         echo "Comparing changes:"
                         echo "- Target (base): ${targetBranch}"
                         echo "- Source (head): ${sourceBranch}"
-                        
-                        // === Step 3: Use sf sgd to generate delta package ===
-                        // This creates package.xml with only changed components
+
+                        // === Step 3: Create output directory first ===
+                        echo "Creating src_delta directory..."
+                        bat 'if not exist src_delta mkdir src_delta'
+                        // === Step 4: Use sf sgd to generate delta package ===
                         echo "Running sf sgd source:delta..."
-                        
+
                         def sgdResult = bat(
                             script: """
-                                sf sgd source:delta ^
+                                 sf sgd source:delta ^
                                     --to ${sourceBranch} ^
                                     --from ${targetBranch} ^
                                     --output src_delta ^
                                     --generate-delta ^
                                     --json
-                            """,
-                            returnStatus: true
+                        """,
+                        returnStatus: true
                         )
                         
                         // === Step 4: Check if delta folder was created ===
