@@ -6,7 +6,7 @@
  * Purpose: Automated validation, approval, and deployment pipeline for Salesforce metadata
  * Trigger: GitHub webhooks (PR comments, PR events)
  * Author: Created for educational/production use
- * Last Updated: 2026-01-25
+ * Last Updated: 2026-01-26
  * 
  * Workflow:
  * 1. Filter webhook triggers (ignore Jenkins bot comments)
@@ -52,9 +52,6 @@ pipeline {
         IS_DEPLOYED = 'false'   // Deployment completed
         IS_VALIDATED = 'false'  // Validation completed
         
-        // === Output Accumulator ===
-        // Collects messages from all stages for final GitHub comment
-        OUTPUT_MESSAGE = ""
     }
     
     stages {
@@ -70,6 +67,8 @@ pipeline {
         stage('Filter Triggers') {
             steps {
                 script {
+                    env.OUTPUT_MESSAGE = "" 
+
                     // === Log Webhook Information ===
                     echo "========================================"
                     echo "Webhook received!"
@@ -373,6 +372,7 @@ pipeline {
                     // === VALIDATE Command ===
                     // Triggered by comment containing "validate" (case-insensitive)
                     if (commentText?.toLowerCase()?.contains('validate')) {
+                        env.OUTPUT_MESSAGE += "🔍 **Running VALIDATION...**\\n\\n"
                         echo "Running VALIDATION"
                         
                         // Execute validation deployment (no changes applied)
@@ -390,11 +390,12 @@ pipeline {
                         currentBuild.description = (currentBuild.description ?: '') + 'VALIDATED '
                         echo "⭐ currentBuild.description is now: ${currentBuild.description}"
                         
-                        env.OUTPUT_MESSAGE += "✅ **Validation attempted (check details in artifacts)**\n"
+                        env.OUTPUT_MESSAGE += "✅ **Validation attempted (check details in artifacts)**\\n"
                         
                     // === DEPLOY Command ===
                     // Triggered by comment containing "deploy" (case-insensitive)
                     } else if (commentText?.toLowerCase()?.contains('deploy')) {
+                        env.OUTPUT_MESSAGE += "🚀 **Running DEPLOYMENT...**\\n\\n"
                         echo "Running DEPLOYMENT"
                         
                         // Execute actual deployment (changes applied to org)
@@ -408,12 +409,16 @@ pipeline {
                         
                         // === Set Deployment Flag ===
                         currentBuild.description = (currentBuild.description ?: '') + 'DEPLOYED '
-                        env.OUTPUT_MESSAGE += "✅ **Deployment attempted (check details in artifacts)**\n"
+                        env.OUTPUT_MESSAGE += "✅ **Deployment attempted (check details in artifacts)**\\n"
                         
                     } else {
                         // No recognized command in comment
                         echo "No valid command - skipping validation/deployment"
+                        env.OUTPUT_MESSAGE += "ℹ️ No validate/deploy command detected\\n"
                     }
+
+                    env.OUTPUT_MESSAGE += "\\n---\\n\\n" 
+
                 }
             }
         }
