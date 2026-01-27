@@ -704,22 +704,20 @@ post {
                       ${apiUrl}
                 """
                 
-                echo "Comment posted to PR #${prNum}"
+                 echo "Comment posted to PR #${prNum}"
             } catch (Exception e) {
                 echo "Failed to post comment: ${e.message}"
             }
-        }
-    }
-    
+        }  
+
+    }      
+
     // ===== SUCCESS BLOCK =====
-    // Executes ONLY if pipeline completed successfully
     success {
         echo "Pipeline completed successfully!"
     }
     
-    // ===== FAILURE BLOCK =====
-    // Executes ONLY if pipeline failed (error() in any stage)
     failure {
         echo "Pipeline failed!"
     }
-}
+}          
