@@ -6,7 +6,7 @@
  * Purpose: Automated validation, approval, and deployment pipeline for Salesforce metadata
  * Trigger: GitHub webhooks (PR comments, PR events)
  * Author: Created for educational/production use
- * Last Updated: 2026-01-26
+ * Last Updated: 2026-01-25
  * 
  * Workflow:
  * 1. Filter webhook triggers (ignore Jenkins bot comments)
@@ -52,6 +52,9 @@ pipeline {
         IS_DEPLOYED = 'false'   // Deployment completed
         IS_VALIDATED = 'false'  // Validation completed
         
+        // === Output Accumulator ===
+        // Collects messages from all stages for final GitHub comment
+        OUTPUT_MESSAGE = ""
     }
     
     stages {
@@ -67,8 +70,6 @@ pipeline {
         stage('Filter Triggers') {
             steps {
                 script {
-                    env.OUTPUT_MESSAGE = "" 
-
                     // === Log Webhook Information ===
                     echo "========================================"
                     echo "Webhook received!"
@@ -78,27 +79,32 @@ pipeline {
                     echo "Comment Author: ${env.comment_author}"
                     echo "========================================"
 
-                    // === Anti-Loop: Check AUTHOR + content ===
-                    if (env.comment_author == 'jenkins' && env.comment_body?.contains('Pipeline Report')) {
-                    echo "JENKINS BOT DETECTED - Skipping loop"
-                        currentBuild.result = 'ABORTED'
-                        error('Jenkins bot skipped')
-                        return
-                    }
+                    // === Debug Comment Content ===
+                    // Check if comment contains keywords to detect Jenkins bot
+                    echo "DEBUG: comment_body length = ${env.comment_body?.length()}"
+                    echo "DEBUG: contains 'Pipeline Report'? = ${env.comment_body?.contains('Pipeline Report')}"
+                    echo "DEBUG: contains 'Jenkins'? = ${env.comment_body?.contains('Jenkins')}"
                     
-                    echo "USER COMMENT - Anti-loop PASSED!"
+                    // === Prevent Infinite Loop ===
+                    // Jenkins posts a comment → GitHub triggers webhook → Jenkins posts again → LOOP!
+                    // Solution: Detect Jenkins-generated comments and abort
+                    if (env.comment_body?.contains('Pipeline Report')) {
+                        echo "⚠️ Skipping - this is a Jenkins bot comment"
+                        currentBuild.result = 'ABORTED'
+                        error('Jenkins bot comment detected - aborting to prevent infinite loop')
+                    }
                     
                     // === Filter Webhook Actions ===
                     // Only process specific GitHub webhook actions
                     def allowedActions = ['opened', 'synchronize', 'created', 'submitted']
                     
                     if (!(env.pr_action in allowedActions)) {
-                        echo "Skipping pipeline - action '${env.pr_action}' not in allowed list"
+                        echo "⏭️ Skipping pipeline - action '${env.pr_action}' not in allowed list"
                         currentBuild.result = 'NOT_BUILT'
                         error("Action not in allowed list")
                     }
                     
-                    echo "Action '${env.pr_action}' is allowed - continuing pipeline"
+                    echo "✅ Action '${env.pr_action}' is allowed - continuing pipeline"
                 }
             }
         }
@@ -114,18 +120,18 @@ pipeline {
         stage('Check Dependencies') {
             steps {
                 script {
-                    env.OUTPUT_MESSAGE += "**Checking dependencies...**\n\n"
+                    env.OUTPUT_MESSAGE += "🔍 **Checking dependencies...**\\n\\n"
                     
                     // === Check Git Installation ===
                     try {
                         echo "Checking Git..."
                         // @ prefix suppresses command echo in Windows batch
                         def gitVersion = bat(script: '@git --version', returnStdout: true).trim()
-                        echo "Git installed: ${gitVersion}"
-                        env.OUTPUT_MESSAGE += "Git: ${gitVersion}\n"
+                        echo "✅ Git installed: ${gitVersion}"
+                        env.OUTPUT_MESSAGE += "✅ Git: ${gitVersion}\\n"
                     } catch (Exception gitError) {
-                        echo "Git not found!"
-                        env.OUTPUT_MESSAGE += "Git not found\n"
+                        echo "❌ Git not found!"
+                        env.OUTPUT_MESSAGE += "❌ Git not found\\n"
                         error("Git is required")  // Stop pipeline if Git not found
                     }
                     
@@ -133,16 +139,16 @@ pipeline {
                     try {
                         echo "Checking Salesforce CLI..."
                         def sfVersion = bat(script: '@sf --version', returnStdout: true).trim()
-                        echo "Salesforce CLI found: ${sfVersion}"
-                        env.OUTPUT_MESSAGE += "Salesforce CLI: ${sfVersion}\n"
+                        echo "✅ Salesforce CLI found: ${sfVersion}"
+                        env.OUTPUT_MESSAGE += "✅ Salesforce CLI: ${sfVersion}\\n"
                     } catch (Exception sfError) {
-                        echo "SF CLI not found"
-                        env.OUTPUT_MESSAGE += "SF CLI not found\n"
+                        echo "❌ SF CLI not found"
+                        env.OUTPUT_MESSAGE += "❌ SF CLI not found\\n"
                         error("Salesforce CLI is required")  // Stop pipeline if SF CLI not found
                     }
                     
                     // Add separator for GitHub comment formatting
-                    env.OUTPUT_MESSAGE += "\n---\n\n"
+                    env.OUTPUT_MESSAGE += "\\n---\\n\\n"
                 }
             }
         }
@@ -159,7 +165,7 @@ pipeline {
         stage('Clone and Merge') {
             steps {
                 script {
-                    env.OUTPUT_MESSAGE += "**Cloning repository and merging branches...**\n\n"
+                    env.OUTPUT_MESSAGE += "📥 **Cloning repository and merging branches...**\\n\\n"
                     
                     try {
                         // === Clean Workspace ===
@@ -173,7 +179,7 @@ pipeline {
                         bat """
                             git clone https://${GITHUB_TOKEN}@github.com/${REPO_NAME}.git .
                         """
-                        env.OUTPUT_MESSAGE += "Repository cloned\n"
+                        env.OUTPUT_MESSAGE += "✅ Repository cloned\\n"
                         
                         // === Checkout Target Branch ===
                         // Switch to the branch where changes will be deployed (e.g., SIT)
@@ -181,7 +187,7 @@ pipeline {
                         bat """
                             git checkout ${PR_BRANCH}
                         """
-                        env.OUTPUT_MESSAGE += "Checked out to: ${PR_BRANCH}\n"
+                        env.OUTPUT_MESSAGE += "✅ Checked out to: ${PR_BRANCH}\\n"
                         
                         // === Merge Source Branch (if exists) ===
                         // For PR events, merge feature branch into target branch
@@ -197,23 +203,23 @@ pipeline {
                             
                             // Check if merge was successful (exit code 0)
                             if (mergeResult != 0) {
-                                env.OUTPUT_MESSAGE += "**MERGE CONFLICT**\n"
+                                env.OUTPUT_MESSAGE += "⚠️ **MERGE CONFLICT**\\n"
                                 error("Merge conflict detected")  // Stop pipeline on conflict
                             } else {
-                                env.OUTPUT_MESSAGE += "Merged successfully: ${SOURCE_BRANCH} → ${PR_BRANCH}\n"
+                                env.OUTPUT_MESSAGE += "✅ Merged successfully: ${SOURCE_BRANCH} → ${PR_BRANCH}\\n"
                             }
                         } else {
                             // Comment-triggered builds don't have a source branch to merge
                             echo "No source branch to merge (comment trigger)"
-                            env.OUTPUT_MESSAGE += "No branch merge needed (comment trigger)\n"
+                            env.OUTPUT_MESSAGE += "ℹ️ No branch merge needed (comment trigger)\\n"
                         }
                         
                     } catch (Exception e) {
-                        env.OUTPUT_MESSAGE += "Error during clone/merge: ${e.message}\n"
+                        env.OUTPUT_MESSAGE += "❌ Error during clone/merge: ${e.message}\\n"
                         throw e  // Re-throw to fail the build
                     }
                     
-                    env.OUTPUT_MESSAGE += "\n---\n\n"
+                    env.OUTPUT_MESSAGE += "\\n---\\n\\n"
                 }
             }
         }
@@ -229,7 +235,7 @@ pipeline {
         stage('Authenticate to Salesforce') {
             steps {
                 script {
-                    env.OUTPUT_MESSAGE += "**Authenticating to Salesforce...**\n\n"
+                    env.OUTPUT_MESSAGE += "🔐 **Authenticating to Salesforce...**\\n\\n"
                     
                     try {
                         // === Load Credentials from Jenkins ===
@@ -262,7 +268,7 @@ pipeline {
                             
                             // === Verify Authentication ===
                             if (authResult == 0) {
-                                env.OUTPUT_MESSAGE += "**Authenticated successfully to Salesforce**\n"
+                                env.OUTPUT_MESSAGE += "✅ **Authenticated successfully to Salesforce**\\n"
                                 
                                 // Get org info for verification
                                 def orgInfo = bat(script: "@sf org display --json", returnStdout: true).trim()
@@ -271,27 +277,27 @@ pipeline {
                                 if (orgData.status == 0) {
                                     def orgId = orgData.result?.id ?: 'Unknown'
                                     def username = orgData.result?.username ?: 'Unknown'
-                                    env.OUTPUT_MESSAGE += "- Org ID: ${orgId}\n"
-                                    env.OUTPUT_MESSAGE += "- Username: ${username}\n"
+                                    env.OUTPUT_MESSAGE += "- Org ID: ${orgId}\\n"
+                                    env.OUTPUT_MESSAGE += "- Username: ${username}\\n"
                                 } else {
-                                    env.OUTPUT_MESSAGE += "- Org ID: Could not retrieve\n"
+                                    env.OUTPUT_MESSAGE += "- Org ID: Could not retrieve\\n"
                                 }
                             } else {
-                                env.OUTPUT_MESSAGE += "**Authentication failed**\n"
+                                env.OUTPUT_MESSAGE += "❌ **Authentication failed**\\n"
                                 error("Salesforce JWT authentication failed")
                             }
                         }
                         
                     } catch (Exception e) {
-                        env.OUTPUT_MESSAGE += "Authentication error: ${e.message}\n"
-                        env.OUTPUT_MESSAGE += "\n**Troubleshooting:**\n"
-                        env.OUTPUT_MESSAGE += "- Verify Connected App settings\n"
-                        env.OUTPUT_MESSAGE += "- Check JWT key file\n"
-                        env.OUTPUT_MESSAGE += "- Confirm username is correct\n"
+                        env.OUTPUT_MESSAGE += "❌ Authentication error: ${e.message}\\n"
+                        env.OUTPUT_MESSAGE += "\\n**Troubleshooting:**\\n"
+                        env.OUTPUT_MESSAGE += "- Verify Connected App settings\\n"
+                        env.OUTPUT_MESSAGE += "- Check JWT key file\\n"
+                        env.OUTPUT_MESSAGE += "- Confirm username is correct\\n"
                         throw e
                     }
                     
-                    env.OUTPUT_MESSAGE += "\n---\n\n"
+                    env.OUTPUT_MESSAGE += "\\n---\\n\\n"
                 }
             }
         }
@@ -307,7 +313,7 @@ pipeline {
         stage('Check Approvals') {
             steps {
                 script {
-                    env.OUTPUT_MESSAGE += "**Checking PR approvals...**\n\n"
+                    env.OUTPUT_MESSAGE += "👥 **Checking PR approvals...**\\n\\n"
                     
                     try {
                         def prNum = env.pr_number ?: env.issue_number
@@ -330,16 +336,16 @@ pipeline {
                         // === Update Status ===
                         if (approvalCount > 0) {
                             env.IS_APPROVED = 'true'
-                            env.OUTPUT_MESSAGE += "**${approvalCount} approval(s) found**\n"
+                            env.OUTPUT_MESSAGE += "✅ **${approvalCount} approval(s) found**\\n"
                         } else {
-                            env.OUTPUT_MESSAGE += "**No approvals found**\n"
+                            env.OUTPUT_MESSAGE += "⚠️ **No approvals found**\\n"
                         }
                         
                     } catch (Exception e) {
-                        env.OUTPUT_MESSAGE += "Could not check approvals: ${e.message}\n"
+                        env.OUTPUT_MESSAGE += "⚠️ Could not check approvals: ${e.message}\\n"
                     }
                     
-                    env.OUTPUT_MESSAGE += "\n---\n\n"
+                    env.OUTPUT_MESSAGE += "\\n---\\n\\n"
                 }
             }
         }
@@ -367,7 +373,6 @@ pipeline {
                     // === VALIDATE Command ===
                     // Triggered by comment containing "validate" (case-insensitive)
                     if (commentText?.toLowerCase()?.contains('validate')) {
-                        env.OUTPUT_MESSAGE += "**Running VALIDATION...**\n\n"
                         echo "Running VALIDATION"
                         
                         // Execute validation deployment (no changes applied)
@@ -381,16 +386,15 @@ pipeline {
                         // === Set Validation Flag ===
                         // Use currentBuild.description instead of env variable
                         // (env variables have issues in Declarative Pipeline)
-                        echo "SETTING IS_VALIDATED via currentBuild.description"
+                        echo "⭐ SETTING IS_VALIDATED via currentBuild.description"
                         currentBuild.description = (currentBuild.description ?: '') + 'VALIDATED '
-                        echo "currentBuild.description is now: ${currentBuild.description}"
+                        echo "⭐ currentBuild.description is now: ${currentBuild.description}"
                         
-                        env.OUTPUT_MESSAGE += "**Validation attempted (check details in artifacts)**\n"
+                        env.OUTPUT_MESSAGE += "✅ **Validation attempted (check details in artifacts)**\n"
                         
                     // === DEPLOY Command ===
                     // Triggered by comment containing "deploy" (case-insensitive)
                     } else if (commentText?.toLowerCase()?.contains('deploy')) {
-                        env.OUTPUT_MESSAGE += "**Running DEPLOYMENT...**\n\n"
                         echo "Running DEPLOYMENT"
                         
                         // Execute actual deployment (changes applied to org)
@@ -404,16 +408,12 @@ pipeline {
                         
                         // === Set Deployment Flag ===
                         currentBuild.description = (currentBuild.description ?: '') + 'DEPLOYED '
-                        env.OUTPUT_MESSAGE += "**Deployment attempted (check details in artifacts)**\n"
+                        env.OUTPUT_MESSAGE += "✅ **Deployment attempted (check details in artifacts)**\n"
                         
                     } else {
                         // No recognized command in comment
                         echo "No valid command - skipping validation/deployment"
-                        env.OUTPUT_MESSAGE += "No validate/deploy command detected\n"
                     }
-
-                    env.OUTPUT_MESSAGE += "\n---\n\n" 
-
                 }
             }
         }
@@ -472,7 +472,7 @@ pipeline {
                                 }
                             }
                         } else {
-                            env.OUTPUT_MESSAGE += "\n**Validation/Deployment failed** - check logs\n"
+                            env.OUTPUT_MESSAGE += "\n❌ **Validation/Deployment failed** - check logs\n"
                         }
                     }
                     */
@@ -500,15 +500,15 @@ pipeline {
             }
             steps {
                 script {
-                    env.OUTPUT_MESSAGE += "**Merging Pull Request...**\n\n"
+                    env.OUTPUT_MESSAGE += "🔀 **Merging Pull Request...**\\n\\n"
                     
                     try {
                         def prNum = env.pr_number ?: env.issue_number
                         
                         // Verify PR number exists
                         if (!prNum || prNum == 'null') {
-                            env.OUTPUT_MESSAGE += "No PR number - cannot merge\n"
-                            env.OUTPUT_MESSAGE += "\n---\n\n"
+                            env.OUTPUT_MESSAGE += "⚠️ No PR number - cannot merge\\n"
+                            env.OUTPUT_MESSAGE += "\\n---\\n\\n"
                             return
                         }
                         
@@ -531,18 +531,18 @@ pipeline {
                         def mergeResult = readJSON text: mergeResponse
                         
                         if (mergeResult.merged == true) {
-                            env.OUTPUT_MESSAGE += "**PR #${prNum} merged successfully!**\n"
-                            env.OUTPUT_MESSAGE += "Commit SHA: ${mergeResult.sha}\n"
+                            env.OUTPUT_MESSAGE += "✅ **PR #${prNum} merged successfully!**\\n"
+                            env.OUTPUT_MESSAGE += "Commit SHA: ${mergeResult.sha}\\n"
                         } else {
-                            env.OUTPUT_MESSAGE += "Merge attempt completed but status unclear\n"
-                            env.OUTPUT_MESSAGE += "Message: ${mergeResult.message ?: 'N/A'}\n"
+                            env.OUTPUT_MESSAGE += "⚠️ Merge attempt completed but status unclear\\n"
+                            env.OUTPUT_MESSAGE += "Message: ${mergeResult.message ?: 'N/A'}\\n"
                         }
                         
                     } catch (Exception e) {
-                        env.OUTPUT_MESSAGE += "Merge error: ${e.message}\n"
+                        env.OUTPUT_MESSAGE += "❌ Merge error: ${e.message}\\n"
                     }
                     
-                    env.OUTPUT_MESSAGE += "\n---\n\n"
+                    env.OUTPUT_MESSAGE += "\\n---\\n\\n"
                 }
             }
         }
@@ -558,7 +558,7 @@ pipeline {
         stage('Archive Artifacts') {
             steps {
                 script {
-                    env.OUTPUT_MESSAGE += "**Archiving artifacts...**\n\n"
+                    env.OUTPUT_MESSAGE += "📦 **Archiving artifacts...**\\n\\n"
                     
                     try {
                         // === Archive Deployment Result JSON ===
@@ -571,152 +571,151 @@ pipeline {
                         // Save the code that was deployed for traceability
                         archiveArtifacts artifacts: "${DEPLOY_DIR}/**/*", allowEmptyArchive: true
                         
-                        env.OUTPUT_MESSAGE += "Artifacts archived\n"
+                        env.OUTPUT_MESSAGE += "✅ Artifacts archived\\n"
                     } catch (Exception e) {
-                        env.OUTPUT_MESSAGE += "Could not archive: ${e.message}\n"
+                        env.OUTPUT_MESSAGE += "⚠️ Could not archive: ${e.message}\\n"
                     }
                     
-                    env.OUTPUT_MESSAGE += "\n---\n\n"
+                    env.OUTPUT_MESSAGE += "\\n---\\n\\n"
                 }
             }
         }
     }
     
         // ===== POST ACTIONS =====
-// Purpose: Send pipeline execution report as comment to GitHub PR
-// Executes: Always (regardless of build success/failure)
-post {
-    always {
-        script {
+    // Purpose: Send pipeline execution report as comment to GitHub PR
+    // Executes: Always (regardless of build success/failure)
+    post {
+        always {
+            script {
 
-            // ===== DEBUG OUTPUT =====
-            // Log all relevant variables for troubleshooting (Jenkins console output only)
-            echo "============================================"
-            echo "POST ACTIONS - DEBUG:"
-            echo "comment_body = '${env.comment_body}'"
-            echo "contains 'Pipeline Report'? = ${env.comment_body?.contains('Pipeline Report')}"
-            echo "currentBuild.result = '${currentBuild.result}'"
-            echo "currentBuild.description = '${currentBuild.description}'"
-            echo "contains VALIDATED? = ${currentBuild.description?.contains('VALIDATED')}"
-            echo "contains DEPLOYED? = ${currentBuild.description?.contains('DEPLOYED')}"
-            echo "============================================"
+                // ===== DEBUG OUTPUT =====
+                // Log all relevant variables for troubleshooting
+                echo "========================================"
+                echo "POST ACTIONS - DEBUG:"
+                echo "comment_body = '${env.comment_body}'"
+                echo "contains 'Pipeline Report'? = ${env.comment_body?.contains('Pipeline Report')}"
+                echo "currentBuild.result = '${currentBuild.result}'"
+                echo "currentBuild.description = '${currentBuild.description}'"
+                echo "contains VALIDATED? = ${currentBuild.description?.contains('VALIDATED')}"
+                echo "contains DEPLOYED? = ${currentBuild.description?.contains('DEPLOYED')}"
+                echo "========================================"
 
-            // ===== CONDITION 1: Was this build triggered by Jenkins bot comment? =====
-            // Check if the WEBHOOK was triggered by a comment containing "Pipeline Report"
-            // This prevents infinite loop: Build → Comment → Webhook → Build → Comment → ∞
-            // Note: check the TRIGGER (comment_body), not the OUTPUT of this build
-            def triggeredByBotComment = env.comment_body?.contains('Pipeline Report')
-            
-            if (triggeredByBotComment) {
-                echo "Skipping - this is a Jenkins bot comment"
-                echo "Build result: ${currentBuild.result}"
+                // ===== CONDITION 1: Was this build triggered by Jenkins bot comment? =====
+                // Check if the WEBHOOK was triggered by a comment containing "Pipeline Report"
+                // This prevents infinite loop: Build → Comment → Webhook → Build → Comment → ∞
+                // Note: check the TRIGGER (comment_body), not the OUTPUT of this build
+                def triggeredByBotComment = env.comment_body?.contains('Pipeline Report')
                 
-                // If build aborted in Stage 0 (detected bot) - DON'T post comment
-                // This is the expected behavior - Stage 0 aborts, Post action skips comment
-                if (currentBuild.result == 'ABORTED') {
-                    echo "Build correctly aborted to prevent loop - no comment needed"
+                if (triggeredByBotComment) {
+                    echo "⚠️ This build was triggered by Jenkins bot comment"
+                    echo "⚠️ Build result: ${currentBuild.result}"
+                    
+                    // If build aborted in Stage 0 (detected bot) - DON'T post comment
+                    // This is the expected behavior - Stage 0 aborts, Post action skips comment
+                    if (currentBuild.result == 'ABORTED') {
+                        echo "✅ Build correctly aborted to prevent loop - no comment needed"
+                        return
+                    }
+                }
+
+                // ===== CONDITION 2: Did any stages execute? =====
+                // Check if pipeline executed any stages (description is set in Stage 5)
+                // If build aborted before stages ran, skip comment (nothing to report)
+                def stagesExecuted = currentBuild.description && currentBuild.description != 'null' && currentBuild.description != ''
+                
+                if (!stagesExecuted && currentBuild.result == 'ABORTED') {
+                    echo "⚠️ Build aborted without executing stages - skipping comment"
                     return
                 }
-            }
 
-            // ===== CONDITION 2: Did any stages execute? =====
-            // Check if pipeline executed any stages (description is set in Stage 5)
-            // If build aborted before stages ran, skip comment (nothing to report)
-            def stagesExecuted = currentBuild.description && currentBuild.description != 'null' && currentBuild.description != ''
-            
-            if (!stagesExecuted && currentBuild.result == 'ABORTED') {
-                echo "Build aborted without executing stages - skipping comment"
-                return
-            }
-
-            // ===== CONDITION 3: Is PR number available? =====
-            // Get PR/Issue number from webhook (required for posting comment)
-            def prNum = env.pr_number ?: env.issue_number
-            
-            if (!prNum || prNum == 'null' || prNum == '') {
-                echo "No PR/Issue number - cannot post comment"
-                return
-            }
-
-            // ===== ALL CHECKS PASSED - POST COMMENT TO GITHUB =====
-            echo "============================================"
-            echo "All checks passed - posting comment to GitHub"
-            echo "============================================"
-            
-            try {
-                // ===== PREPARE REPORT =====
-                // Determine build status (SUCCESS/FAILURE/ABORTED)
-                def buildStatus = currentBuild.result ?: 'SUCCESS'
-
-                // ===== FIX: Handle empty OUTPUT_MESSAGE =====
-                // If OUTPUT_MESSAGE is null/empty (early abort), use placeholder
-                // This prevents "null" appearing in GitHub comment
-                def outputContent = env.OUTPUT_MESSAGE ?: "No stage output (build may have been aborted early)"
-
-                // ===== BUILD MARKDOWN REPORT AS SINGLE LINE =====
-                // CRITICAL FIX: Composed with string concatenation (+ "\n") instead of multi-line """..."""
-                // Why? Multi-line """...""" creates REAL newlines that break Windows CMD command parsing
-                // Here we create ONE LONG STRING with LITERAL \n characters inside
-                // GitHub API will interpret \n as actual newlines when rendering markdown
-                def finalMessage =
-                    "## Jenkins CI/CD Pipeline Report\n\n" +  // Title + spacing
-                    "**Build:** [#${BUILD_NUMBER}](${BUILD_URL})\n" +  // Build link
-                    "**Status:** ${buildStatus}\n" +  // SUCCESS/FAILURE/ABORTED
-                    "**Triggered by:** ${env.pr_action}\n" +  // Webhook action (created, opened, etc.)
-                    "**Branch:** ${PR_BRANCH}\n\n" +  // Target branch (SIT)
-                    "---\n\n" +  // Separator before stages output
-                    "${outputContent}\n\n" +  // ALL stage logs (Checking dependencies..., etc.)
-                    "---\n\n" +  // Separator before summary
-                    "**Summary:**\n" +  // Summary section
-                    "- Approved: ${env.IS_APPROVED == 'true' ? 'Yes' : 'No'}\n" +
-                    "- Validated: ${currentBuild.description?.contains('VALIDATED') ? 'Yes' : 'No'}\n" +
-                    "- Deployed: ${currentBuild.description?.contains('DEPLOYED') ? 'Yes' : 'No'}\n\n" +
-                    "---\n" +  // Final separator
-                    "*Pipeline executed at: ${new Date()}*"  // Timestamp
-
-                // ===== ESCAPE MESSAGE FOR JSON =====
-                // ONLY escape double quotes (") for valid JSON
-                // ONLY remove Windows carriage returns (\r)
-                // LET GitHub API interpret literal \n as actual newlines - DO NOT convert them!
-                def escapedMessage = finalMessage
-                    .replaceAll('"', '\\\\"')  // " → \" (JSON escape)
-                    .replaceAll('\r', '')     // Remove \r (Windows line endings)
-
-                // ===== POST COMMENT VIA GITHUB API =====
-                // POST /repos/{owner}/{repo}/issues/{issue_number}/comments
-                // Note: PR comments use /issues/ endpoint (not /pulls/)
-                def apiUrl = "https://api.github.com/repos/${REPO_NAME}/issues/${prNum}/comments"
+                // ===== CONDITION 3: Is PR number available? =====
+                // Get PR/Issue number from webhook (required for posting comment)
+                def prNum = env.pr_number ?: env.issue_number
                 
-                // ===== WINDOWS CMD FRIENDLY CURL =====
-                // @curl = suppress command echo
-                // ^ at end of lines = Windows CMD line continuation (treats as ONE command)
-                // -d "..." = JSON payload (one long line, no real newlines inside)
-                bat """
-                    @curl -s -X POST ^
-                      -H "Authorization: token ${GITHUB_TOKEN}" ^
-                      -H "Accept: application/vnd.github.v3+json" ^
-                      -d "{\\"body\\":\\"${escapedMessage}\\"}" ^
-                      ${apiUrl}
-                """
-                
-                 echo "Comment posted to PR #${prNum}"
-            } catch (Exception e) {
-                echo "Failed to post comment: ${e.message}"
-            }
-        }  
-    }  
-    
-    // ===== SUCCESS BLOCK =====
-    // Only runs if build was successful
-    success {
-        echo "Pipeline completed successfully!"
-    }
-    
-    // ===== FAILURE BLOCK =====
-    // Only runs if build failed
-    failure {
-        echo "Pipeline failed!"
-    }
-}  
+                if (!prNum || prNum == 'null' || prNum == '') {
+                    echo "⚠️ No PR/Issue number - cannot post comment"
+                    return
+                }
 
-}    
+                // ===== ALL CHECKS PASSED - POST COMMENT TO GITHUB =====
+                echo "========================================"
+                echo "✅ All checks passed - posting comment to GitHub"
+                echo "========================================"
+                
+                try {
+                    // ===== PREPARE REPORT =====
+                    // Determine build status (SUCCESS/FAILURE/ABORTED)
+                    def buildStatus = currentBuild.result ?: 'SUCCESS'
+                    def statusEmoji = buildStatus == 'SUCCESS' ? '✅' : '❌'
+                    
+                    // ===== FIX: Handle empty OUTPUT_MESSAGE =====
+                    // If OUTPUT_MESSAGE is null/empty (early abort), use placeholder
+                    // This prevents "null" appearing in GitHub comment
+                    def outputContent = env.OUTPUT_MESSAGE ?: "_No stage output (build may have been aborted early)_"
+                    
+                    // ===== BUILD MARKDOWN REPORT =====
+                    // Comprehensive report with build info, stage output, and summary
+                    def finalMessage = """
+## :white_check_mark: Jenkins CI/CD Pipeline Report
+
+**Build:** [#${BUILD_NUMBER}](${BUILD_URL})
+**Status:** ${buildStatus}
+**Triggered by:** ${env.pr_action}
+**Branch:** ${PR_BRANCH}
+
+---
+
+${outputContent}
+
+---
+
+**Summary:**
+- Approved: ${env.IS_APPROVED == 'true' ? ':white_check_mark: Yes' : ':x: No'}
+- Validated: ${currentBuild.description?.contains('VALIDATED') ? ':white_check_mark: Yes' : ':x: No'}
+- Deployed: ${currentBuild.description?.contains('DEPLOYED') ? ':white_check_mark: Yes' : ':x: No'}
+
+---
+*Pipeline executed at: ${new Date()}*
+                    """.trim()
+                    
+                    // ===== ESCAPE MESSAGE FOR JSON =====
+                    // Escape special characters to ensure valid JSON payload
+                    // \\ → \\\\, " → \", \n → \\n, \r → removed
+                    def escapedMessage = finalMessage
+                        .replaceAll('\\\\', '\\\\\\\\')
+                        .replaceAll('"', '\\\\"')
+                        .replaceAll('\n', '\\\\n')
+                        .replaceAll('\r', '')
+                    
+                    // ===== POST COMMENT VIA GITHUB API =====
+                    // POST /repos/{owner}/{repo}/issues/{issue_number}/comments
+                    // Note: PR comments use /issues/ endpoint (not /pulls/)
+                    def apiUrl = "https://api.github.com/repos/${REPO_NAME}/issues/${prNum}/comments"
+                    
+                    // curl -X POST = HTTP POST method
+                    // -d = JSON payload with escaped message body
+                    bat """
+                        @curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/vnd.github.v3+json" -d "{\\"body\\":\\"${escapedMessage}\\"}" ${apiUrl}
+                    """
+                    
+                    echo "✅ Comment posted to PR #${prNum}"
+                } catch (Exception e) {
+                    echo "❌ Failed to post comment: ${e.message}"
+                }
+            }
+        }
+        
+        // ===== SUCCESS BLOCK =====
+        // Executes ONLY if pipeline completed successfully
+        success {
+            echo "✅ Pipeline completed successfully!"
+        }
+        
+        // ===== FAILURE BLOCK =====
+        // Executes ONLY if pipeline failed (error() in any stage)
+        failure {
+            echo "❌ Pipeline failed!"
+        }
+    }
+}
