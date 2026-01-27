@@ -602,9 +602,9 @@ pipeline {
                 echo "contains DEPLOYED? = ${currentBuild.description?.contains('DEPLOYED')}"
                 echo "========================================"
 
-                // don't post when OUTPUT_MESSAGE is empty
-                if (!env.OUTPUT_MESSAGE || env.OUTPUT_MESSAGE == '') {
-                    echo "OUTPUT_MESSAGE is empty - skipping GitHub comment"
+                // Post comment only if stages were executed
+                if (currentBuild.result == 'ABORTED' && (!currentBuild.description || currentBuild.description == '')) {
+                    echo "Build aborted without running stages - skipping GitHub comment"
                     return
                 }
 
