@@ -1,0 +1,470 @@
+# Salesforce CI/CD Pipeline with Jenkins
+
+> An enterprise-grade CI/CD pipeline demonstrating automated Salesforce deployments, JWT authentication, delta deployments, and intelligent webhook filtering.
+
+---
+
+## 📋 Table of Contents
+
+- [Overview](#-overview)
+- [Project Purpose](#-project-purpose)
+- [Architecture](#-architecture)
+- [Technologies Used](#-technologies-used)
+- [Key Features](#-key-features)
+- [Pipeline Stages](#-pipeline-stages)
+- [Technical Challenges Solved](#-technical-challenges-solved)
+- [Learning Outcomes](#-learning-outcomes)
+- [Resources](#-resources)
+
+---
+
+## 🎯 Overview
+
+This project implements a production-ready CI/CD pipeline for Salesforce deployments using Jenkins, demonstrating advanced DevOps practices including:
+
+- **Automated deployments** triggered by GitHub PR comments
+- **JWT authentication** for secure, passwordless Salesforce integration
+- **Delta deployments** for optimized change deployment
+- **Intelligent webhook filtering** to prevent infinite loops and resource waste
+- **Comprehensive error handling** and status reporting
+
+The pipeline integrates three platforms: **GitHub** (version control), **Jenkins** (automation server), and **Salesforce** (deployment target), creating a seamless CI/CD workflow.
+
+---
+
+## 💡 Project Purpose
+
+### Educational Goals
+
+This project was created to:
+
+1. **Learn enterprise CI/CD practices** - Understand how professional teams automate Salesforce deployments
+2. **Master Jenkins pipeline development** - Gain hands-on experience with Declarative and Scripted pipelines
+3. **Implement security best practices** - Use JWT authentication instead of password-based auth
+4. **Solve real-world problems** - Debug issues like infinite loops, authentication failures, and race conditions
+5. **Document learnings** - Create comprehensive documentation for knowledge sharing
+
+### Real-World Scenario
+
+The pipeline simulates a typical enterprise workflow:
+```
+Developer → Creates PR → Adds comment "Validate" → 
+Jenkins automatically validates → Reports results → 
+If approved → Deploy to Salesforce → Auto-merge PR
+```
+
+This approach reduces manual deployment effort and minimizes human error in the deployment process.
+
+---
+
+## 🏗️ Architecture
+
+### System Diagram
+
+```
+┌─────────────────┐         ┌──────────────────┐         ┌─────────────────┐
+│                 │         │                  │         │                 │
+│     GitHub      │ ─────> │     Jenkins      │ ─────> │   Salesforce    │
+│  (Source Code)  │ Webhook │   (CI/CD Server) │   JWT  │  (Deployment)   │
+│                 │         │                  │         │                 │
+└─────────────────┘         └──────────────────┘         └─────────────────┘
+        │                            │                            │
+        │                            │                            │
+        └────────────────────────────┴────────────────────────────┘
+                    GitHub API (Status Reports)
+```
+
+### Workflow
+
+```
+PR Comment: "Validate"
+    ↓
+GitHub Webhook
+    ↓
+Generic Webhook Trigger
+    ↓
+Regex Filter (validate|deploy|default)
+    ↓
+Start Pipeline
+    ↓
+Stage 0: Filter Triggers
+    ↓
+Stages 1-4: Setup & Authentication
+    ↓
+Stage 4.5: Build Diff Package
+    ↓
+Stage 5: Validate or Deploy
+    ↓
+Post Actions: Report to GitHub
+```
+
+---
+
+## 🛠️ Technologies Used
+
+### Core Technologies
+
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| **Jenkins** | 2.x | CI/CD automation server |
+| **Salesforce CLI** | 2.116.6 | Deployment and validation tool |
+| **Groovy** | - | Pipeline scripting language |
+| **Git** | 2.51.1 | Version control |
+| **OpenSSL** | - | Certificate generation for JWT |
+
+### Jenkins Plugins
+
+- **Generic Webhook Trigger** - Webhook handling and filtering
+- **Pipeline** - Declarative pipeline support
+- **Git Plugin** - Repository integration
+- **Credentials Plugin** - Secure credential management
+
+### Salesforce
+
+- **Connected App** - OAuth 2.0 JWT Bearer Flow
+- **Salesforce DX** - Modern development workflow
+- **Metadata API** - Deployment interface
+
+---
+
+## ⚡ Key Features
+
+### 1. JWT Authentication
+```groovy
+// Secure, passwordless authentication
+sf org login jwt \
+  --client-id ${CONSUMER_KEY} \
+  --jwt-key-file ${SERVER_KEY} \
+  --username ${SF_USERNAME} \
+  --alias SIT
+```
+**Benefits:**
+- ✅ No password exposure
+- ✅ Certificate-based security
+- ✅ Enterprise-ready
+- ✅ Automated rotation
+
+### 2. Delta Deployment (Stage 4.5)
+```groovy
+// Deploy only changed files
+sf sgd source:delta \
+  --to ${toSHA} \
+  --from ${fromSHA} \
+  --output src_delta
+```
+**Benefits:**
+- ⚡ Faster deployments (only changed files)
+- 🎯 Clearer deployment logs
+- 💰 Reduced API usage
+- ✅ Fewer conflicts
+
+### 3. Webhook Filtering
+```groovy
+// Optional Filter
+Expression: (?i)^(validate|deploy|default)$
+Text: $comment_body
+```
+**Benefits:**
+- 🚫 Blocks random comments ("nice work", "lgtm")
+- 🔄 Prevents infinite loops (bot comments filtered)
+- 💰 Saves Jenkins resources
+- ✅ Case-insensitive command matching
+
+### 4. Intelligent Loop Prevention
+
+**Problem:** Jenkins posts comment → GitHub webhook → Jenkins starts again → ∞
+
+**Solution:** Two-layer protection
+```groovy
+// Layer 1: Regex filter (at webhook level)
+"Pipeline Report" → Regex NO MATCH → Build blocked
+
+// Layer 2: Stage 0 check (inside pipeline)
+if (comment contains "Pipeline Report") {
+  ABORT build
+}
+```
+
+### 5. Comprehensive Status Reporting
+
+Every build posts detailed reports to GitHub:
+```markdown
+## Jenkins CI/CD Pipeline Report
+
+**Build:** #204
+**Status:** SUCCESS
+**Branch:** SIT
+
+**Summary:**
+- Approved: ✅ Yes
+- Validated: ✅ Yes
+- Deployed: ❌ No
+```
+
+---
+
+## 🔄 Pipeline Stages
+
+### Stage 0: Filter Triggers
+**Purpose:** Prevent infinite loops from bot comments
+
+**Logic:**
+```groovy
+if (comment_body.contains("Pipeline Report")) {
+  ABORT // This is a bot comment
+}
+```
+
+### Stage 1: Check Dependencies
+**Purpose:** Verify Git, Salesforce CLI, and credentials are available
+
+**Verifies:**
+- Git installation
+- Salesforce CLI (`sf` command)
+- GitHub credentials
+- JWT certificate and keys
+
+### Stage 2: Clone and Merge
+**Purpose:** Prepare codebase for deployment
+
+**Actions:**
+1. Clone repository from GitHub
+2. Checkout target branch (SIT)
+3. Merge source branch (if PR event)
+4. Resolve conflicts (abort if unresolvable)
+
+### Stage 3: Authenticate to Salesforce
+**Purpose:** Establish secure connection using JWT
+
+**Implementation:**
+```groovy
+bat """
+  sf org login jwt ^
+    --client-id ${CONSUMER_KEY} ^
+    --jwt-key-file "${SERVER_KEY}" ^
+    --username ${SF_USERNAME} ^
+    --alias SIT ^
+    --set-default
+"""
+```
+
+**Advantages over password auth:**
+- No password stored in Jenkins
+- Certificate expires (automatic rotation)
+- Audit trail in Salesforce
+
+### Stage 4: Check Approvals
+**Purpose:** Verify PR has required approvals before deployment
+
+**Logic:**
+```groovy
+GET https://api.github.com/repos/{owner}/{repo}/pulls/{pr}/reviews
+
+if (approved_reviews >= 1) {
+  IS_APPROVED = true
+}
+```
+
+### Stage 4.5: Build Diff Package (Educational)
+**Purpose:** Demonstrate delta deployment optimization
+
+**Process:**
+1. Install `sfdx-git-delta` plugin
+2. Compare commits: `HEAD` vs `origin/SIT`
+3. Generate `src_delta/` folder with changed files
+4. Log what would be deployed
+
+**Note:** Currently simulated (deploys full `force-app/`). In production, would deploy `src_delta/` only.
+
+### Stage 5: Validate or Deploy
+**Purpose:** Execute Salesforce deployment based on comment
+
+**Command Detection:**
+```groovy
+if (comment contains "validate") {
+  sf project deploy validate --source-dir force-app
+  
+} else if (comment contains "deploy") {
+  sf project deploy start --source-dir force-app
+}
+```
+
+**Validation vs Deployment:**
+- **Validate:** Check-only (no changes applied)
+- **Deploy:** Apply changes to org
+
+### Stage 6: Parse Deployment Result (Disabled)
+**Purpose:** Extract deployment details from JSON
+
+**Status:** Temporarily disabled (force-app contains only org settings, not deployable code)
+
+### Stage 7: Merge Pull Request
+**Purpose:** Auto-merge PR after successful approved deployment
+
+**Conditions:**
+```groovy
+if (IS_APPROVED && IS_DEPLOYED) {
+  PUT https://api.github.com/repos/{owner}/{repo}/pulls/{pr}/merge
+}
+```
+
+### Stage 8: Archive Artifacts
+**Purpose:** Save deployment results and metadata
+
+**Artifacts:**
+- `deployment-result.json` - Detailed results
+- `force-app/**/*` - Source code deployed
+
+---
+
+## 🐛 Technical Challenges Solved
+
+### Challenge 1: Infinite Loop
+**Problem:** Jenkins comment triggered webhook → New build → New comment → ∞
+
+**Solution:** Two-layer protection
+1. Regex filter at webhook level
+2. Stage 0 check inside pipeline
+
+**Result:** Zero infinite loops since implementation
+
+---
+
+### Challenge 2: JWT Authentication Failures
+**Problem:** `Bad_OAuth_Token` errors, invalid JWT signature
+
+**Root causes identified:**
+- User not pre-authorized in Connected App
+- Incorrect certificate format
+- Windows path issues with spaces
+
+**Solution:**
+- Pre-authorize users in OAuth policies
+- Use proper PEM format for certificates
+- Quote paths: `"C:\Program Files\..."`
+
+**Result:** 100% authentication success rate
+
+---
+
+### Challenge 3: Environment Variable Not Updating
+**Problem:** `env.IS_VALIDATED = 'true'` executed but variable stayed `false`
+
+**Root cause:** Declarative Pipeline bug with `env` variables in `script` blocks
+
+**Solution:** Use `currentBuild.description` instead
+```groovy
+// Set flag
+currentBuild.description = (currentBuild.description ?: '') + 'VALIDATED '
+
+// Check flag
+if (currentBuild.description?.contains('VALIDATED')) {
+  // Do something
+}
+```
+
+**Result:** Reliable status tracking across stages
+
+---
+
+### Challenge 4: Missing Files in Jenkins Workspace
+**Problem:** Validation failed: "InvalidProjectWorkspaceError: does not contain valid Salesforce DX project"
+
+**Root cause:** 
+- Files existed locally but weren't committed to Git
+- Jenkins `deleteDir()` + `git clone` → clean workspace without local files
+
+**Solution:** Commit all Salesforce project files
+```bash
+git add sfdx-project.json force-app/ manifest/ .forceignore package.json
+git commit -m "Add Salesforce DX project structure"
+```
+
+**Result:** Workspace properly initialized every build
+
+---
+
+### Challenge 5: Delta Deployment Plugin Errors
+**Problem:** `sf sgd source:delta` failed with "Unexpected argument: HEAD"
+
+**Root cause:** Plugin requires commit SHAs, not branch refs
+
+**Solution:** Convert refs to SHAs
+```groovy
+def fromSHA = bat(script: "@git rev-parse origin/SIT", returnStdout: true).trim()
+def toSHA = bat(script: "@git rev-parse HEAD", returnStdout: true).trim()
+
+sf sgd source:delta --to ${toSHA} --from ${fromSHA}
+```
+
+**Result:** Delta package successfully generated
+
+---
+
+## 🎓 Learning Outcomes
+
+### DevOps Skills Acquired
+
+✅ **CI/CD Pipeline Design**
+- Declarative vs Scripted pipelines
+- Stage organization and dependencies
+- Error handling and recovery
+
+✅ **Jenkins Administration**
+- Plugin management
+- Credential management
+- Workspace management
+- Build triggers and webhooks
+
+✅ **Git Workflow Automation**
+- Branch management
+- Merge conflict resolution
+- PR automation
+- Webhook integration
+
+✅ **Salesforce Deployment**
+- Metadata API
+- Salesforce CLI commands
+- Validation vs deployment
+- Test execution
+
+✅ **Security Best Practices**
+- JWT authentication
+- Certificate management
+- Secret handling in CI/CD
+- API token security
+
+✅ **Problem-Solving Skills**
+- Reading Jenkins logs
+- Debugging Groovy syntax
+- Troubleshooting API calls
+- Iterative development
+
+---
+
+## 📚 Resources
+
+### Documentation Used
+
+- [Salesforce CLI Command Reference](https://developer.salesforce.com/docs/atlas.en-us.sfdx_cli_reference.meta/sfdx_cli_reference/)
+- [Jenkins Pipeline Syntax](https://www.jenkins.io/doc/book/pipeline/syntax/)
+- [Generic Webhook Trigger Plugin](https://plugins.jenkins.io/generic-webhook-trigger/)
+- [JWT Bearer Flow](https://help.salesforce.com/s/articleView?id=sf.remoteaccess_oauth_jwt_flow.htm)
+- [Salesforce Git Delta](https://github.com/scolladon/sfdx-git-delta)
+
+---
+
+## 👤 Author
+
+**Piotr Matynia**
+
+Created as part of DevOps learning journey to understand enterprise CI/CD practices.
+
+---
+
+## 🙏 Acknowledgments
+
+- **Salesforce Documentation** - Comprehensive guides on Metadata API and CLI
+- **Jenkins Community** - Excellent plugin ecosystem and documentation
+- **DevOps Best Practices** - Industry standards that guided implementation
+- **Trial and Error** - The best teacher for debugging complex systems
